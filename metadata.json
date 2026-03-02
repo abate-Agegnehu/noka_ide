@@ -1,0 +1,5 @@
+{
+  "name": "Nova IDE",
+  "description": "A professional, AI-powered web IDE with real-time preview, full project management, and Monaco editor integration.",
+  "requestFramePermissions": []
+}

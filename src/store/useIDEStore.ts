@@ -1,0 +1,369 @@
+import { create } from 'zustand';
+import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
+import { v4 as uuidv4 } from 'uuid';
+import { get, set, del } from 'idb-keyval';
+
+// Custom storage for Zustand using IndexedDB
+const idbStorage: StateStorage = {
+  getItem: async (name: string): Promise<string | null> => {
+    const value = await get<string>(name);
+    return value ?? null;
+  },
+  setItem: async (name: string, value: string): Promise<void> => {
+    await set(name, value);
+  },
+  removeItem: async (name: string): Promise<void> => {
+    await del(name);
+  },
+};
+
+export type FileType = 'file' | 'folder';
+
+export interface FileNode {
+  id: string;
+  name: string;
+  type: FileType;
+  parentId: string | null;
+  content?: string;
+  language?: string;
+  isOpen?: boolean;
+}
+
+interface IDEState {
+  files: Record<string, FileNode>;
+  activeFileId: string | null;
+  openFileIds: string[];
+  sidebarWidth: number;
+  previewWidth: number;
+  isChatOpen: boolean;
+  isTerminalOpen: boolean;
+  terminalLogs: string[];
+  isRunning: boolean;
+  previewUrl: string;
+  terminals: { id: string, name: string, initialCommand?: string }[];
+  activeTerminalId: string | null;
+  
+  // Actions
+  setPreviewUrl: (url: string) => void;
+  createFile: (name: string, parentId: string | null, content?: string) => string;
+  createFolder: (name: string, parentId: string | null) => string;
+  deleteNode: (id: string) => void;
+  renameNode: (id: string, newName: string) => void;
+  setActiveFile: (id: string | null) => void;
+  closeFile: (id: string) => void;
+  updateFileContent: (id: string, content: string) => void;
+  setSidebarWidth: (width: number) => void;
+  setPreviewWidth: (width: number) => void;
+  toggleChat: () => void;
+  toggleTerminal: () => void;
+  addTerminalLog: (log: string) => void;
+  clearTerminalLogs: () => void;
+  setRunning: (isRunning: boolean) => void;
+  addTerminal: (name?: string, initialCommand?: string) => string;
+  removeTerminal: (id: string) => void;
+  setActiveTerminal: (id: string | null) => void;
+  setFiles: (files: Record<string, FileNode>) => void;
+  toggleFolderOpen: (id: string) => void;
+  importFiles: (newFiles: Record<string, FileNode>) => void;
+  importSingleFile: (name: string, content: string, parentId: string | null) => string;
+}
+
+const initialFiles: Record<string, FileNode> = {
+  'root': {
+    id: 'root',
+    name: 'project',
+    type: 'folder',
+    parentId: null,
+    isOpen: true,
+  },
+  'index-html': {
+    id: 'index-html',
+    name: 'index.html',
+    type: 'file',
+    parentId: 'root',
+    language: 'html',
+    content: `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nova App</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background: #0f172a;
+            color: white;
+        }
+        h1 { color: #38bdf8; }
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 2rem;
+            border-radius: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Welcome to Nova IDE</h1>
+        <p>Edit this file to see live changes!</p>
+        <div id="app"></div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>`,
+  },
+  'script-js': {
+    id: 'script-js',
+    name: 'script.js',
+    type: 'file',
+    parentId: 'root',
+    language: 'javascript',
+    content: `console.log("Hello from Nova IDE!");
+
+const app = document.getElementById('app');
+app.innerHTML = '<p>Current time: ' + new Date().toLocaleTimeString() + '</p>';
+
+setInterval(() => {
+    app.innerHTML = '<p>Current time: ' + new Date().toLocaleTimeString() + '</p>';
+}, 1000);`,
+  }
+};
+
+export const useIDEStore = create<IDEState>()(
+  persist(
+    (set, get) => ({
+      files: initialFiles,
+      activeFileId: 'index-html',
+      openFileIds: ['index-html'],
+      sidebarWidth: 260,
+      previewWidth: 400,
+      isChatOpen: false,
+      isTerminalOpen: true,
+      terminalLogs: [
+        'Nova IDE v1.0.0 initialized.',
+        'Type "help" to see available commands.',
+      ],
+      isRunning: false,
+      previewUrl: 'http://localhost:3000',
+      terminals: [],
+      activeTerminalId: null,
+
+      setPreviewUrl: (url) => set({ previewUrl: url }),
+      createFile: (name, parentId, content = '') => {
+        const id = uuidv4();
+        const extension = name.split('.').pop() || 'text';
+        const languageMap: Record<string, string> = {
+          'js': 'javascript',
+          'ts': 'typescript',
+          'tsx': 'typescript',
+          'jsx': 'javascript',
+          'html': 'html',
+          'css': 'css',
+          'json': 'json',
+          'py': 'python',
+          'md': 'markdown'
+        };
+        
+        const newNode: FileNode = {
+          id,
+          name,
+          type: 'file',
+          parentId,
+          content,
+          language: languageMap[extension] || 'text'
+        };
+
+        set((state) => ({
+          files: { ...state.files, [id]: newNode },
+          activeFileId: id,
+          openFileIds: state.openFileIds.includes(id) ? state.openFileIds : [...state.openFileIds, id]
+        }));
+        return id;
+      },
+
+      createFolder: (name, parentId) => {
+        const id = uuidv4();
+        const newNode: FileNode = {
+          id,
+          name,
+          type: 'folder',
+          parentId,
+          isOpen: true
+        };
+        set((state) => ({
+          files: { ...state.files, [id]: newNode }
+        }));
+        return id;
+      },
+
+      deleteNode: (id) => {
+        set((state) => {
+          const newFiles = { ...state.files };
+          const deletedIds: string[] = [];
+          
+          const deleteRecursive = (nodeId: string) => {
+            deletedIds.push(nodeId);
+            Object.values(state.files).forEach(f => {
+              if (f.parentId === nodeId) deleteRecursive(f.id);
+            });
+            delete newFiles[nodeId];
+          };
+          
+          deleteRecursive(id);
+          
+          const newOpenFileIds = state.openFileIds.filter(fid => !deletedIds.includes(fid));
+          let newActiveId = state.activeFileId;
+          if (state.activeFileId && deletedIds.includes(state.activeFileId)) {
+            newActiveId = newOpenFileIds.length > 0 ? newOpenFileIds[newOpenFileIds.length - 1] : null;
+          }
+          
+          return {
+            files: newFiles,
+            openFileIds: newOpenFileIds,
+            activeFileId: newActiveId
+          };
+        });
+      },
+
+      renameNode: (id, newName) => {
+        set((state) => ({
+          files: {
+            ...state.files,
+            [id]: { ...state.files[id], name: newName }
+          }
+        }));
+      },
+
+      setActiveFile: (id) => {
+        if (!id) {
+          set({ activeFileId: null });
+          return;
+        }
+        set((state) => ({
+          activeFileId: id,
+          openFileIds: state.openFileIds.includes(id) ? state.openFileIds : [...state.openFileIds, id]
+        }));
+      },
+
+      closeFile: (id) => {
+        set((state) => {
+          const newOpenIds = state.openFileIds.filter(fid => fid !== id);
+          let newActiveId = state.activeFileId;
+          if (state.activeFileId === id) {
+            newActiveId = newOpenIds.length > 0 ? newOpenIds[newOpenIds.length - 1] : null;
+          }
+          return {
+            openFileIds: newOpenIds,
+            activeFileId: newActiveId
+          };
+        });
+      },
+
+      updateFileContent: (id, content) => {
+        set((state) => ({
+          files: {
+            ...state.files,
+            [id]: { ...state.files[id], content }
+          }
+        }));
+      },
+
+      setSidebarWidth: (width) => set({ sidebarWidth: width }),
+      setPreviewWidth: (width) => set({ previewWidth: width }),
+      toggleChat: () => set((state) => ({ isChatOpen: !state.isChatOpen })),
+      toggleTerminal: () => set((state) => ({ isTerminalOpen: !state.isTerminalOpen })),
+      addTerminalLog: (log) => set((state) => ({ 
+        terminalLogs: [...state.terminalLogs, log] 
+      })),
+      clearTerminalLogs: () => set({ terminalLogs: [] }),
+      setRunning: (isRunning) => set({ isRunning }),
+      addTerminal: (name, initialCommand) => {
+        const id = uuidv4();
+        const terminalName = name || `Terminal ${get().terminals.length + 1}`;
+        set((state) => ({
+          terminals: [...state.terminals, { id, name: terminalName, initialCommand }],
+          activeTerminalId: id,
+          isTerminalOpen: true
+        }));
+        return id;
+      },
+      removeTerminal: (id) => set((state) => {
+        const newTerminals = state.terminals.filter(t => t.id !== id);
+        let newActiveId = state.activeTerminalId;
+        if (state.activeTerminalId === id) {
+          newActiveId = newTerminals.length > 0 ? newTerminals[newTerminals.length - 1].id : null;
+        }
+        return {
+          terminals: newTerminals,
+          activeTerminalId: newActiveId
+        };
+      }),
+      setActiveTerminal: (id) => set({ activeTerminalId: id }),
+      setFiles: (files) => set((state) => {
+        const fileIds = Object.keys(files);
+        const newOpenFileIds = state.openFileIds.filter(id => fileIds.includes(id));
+        let newActiveId = state.activeFileId;
+        if (state.activeFileId && !fileIds.includes(state.activeFileId)) {
+          newActiveId = newOpenFileIds.length > 0 ? newOpenFileIds[0] : null;
+        }
+        return {
+          files,
+          openFileIds: newOpenFileIds,
+          activeFileId: newActiveId
+        };
+      }),
+      toggleFolderOpen: (id) => set((state) => ({
+        files: {
+          ...state.files,
+          [id]: { ...state.files[id], isOpen: !state.files[id].isOpen }
+        }
+      })),
+      importFiles: (newFiles) => set((state) => {
+         const fileIds = Object.keys(newFiles);
+         const indexHtml = fileIds.find(id => newFiles[id].name === 'index.html');
+         return {
+           files: newFiles,
+           openFileIds: indexHtml ? [indexHtml] : [],
+           activeFileId: indexHtml || fileIds[0] || null
+         };
+       }),
+       importSingleFile: (name, content, parentId) => {
+         const id = uuidv4();
+         const extension = name.split('.').pop() || 'text';
+         const languageMap: Record<string, string> = {
+           'js': 'javascript', 'ts': 'typescript', 'tsx': 'typescript',
+           'jsx': 'javascript', 'html': 'html', 'css': 'css',
+           'json': 'json', 'py': 'python', 'md': 'markdown'
+         };
+         
+         const newNode: FileNode = {
+           id,
+           name,
+           type: 'file',
+           parentId,
+           content,
+           language: languageMap[extension] || 'text'
+         };
+
+         set((state) => ({
+           files: { ...state.files, [id]: newNode },
+           activeFileId: id,
+           openFileIds: state.openFileIds.includes(id) ? state.openFileIds : [...state.openFileIds, id]
+         }));
+         return id;
+       }
+     }),
+    {
+      name: 'nova-ide-storage',
+      storage: createJSONStorage(() => idbStorage),
+    }
+  )
+);
