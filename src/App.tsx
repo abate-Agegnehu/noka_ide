@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
+import { Extensions } from './components/Extensions';
 import { CodeEditor } from './components/CodeEditor';
 import { Preview } from './components/Preview';
 import { Chat } from './components/Chat';
@@ -33,6 +34,8 @@ export default function App() {
     toggleChat, 
     activeFileId, 
     files, 
+    activePanel,
+    setActivePanel,
     createFile, 
     createFolder, 
     importFiles, 
@@ -386,8 +389,25 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left Activity Bar */}
         <aside className="w-12 border-r border-white/5 flex flex-col items-center py-4 gap-4 bg-slate-950">
-          <button className="p-2 text-blue-400 bg-blue-500/10 rounded-lg" title="Explorer">
+          <button 
+            className={cn(
+              "p-2 transition-colors",
+              activePanel === 'explorer' ? "text-blue-400 bg-blue-500/10 rounded-lg" : "text-slate-500 hover:text-slate-300"
+            )}
+            onClick={() => setActivePanel('explorer')}
+            title="Explorer"
+          >
             <Layout size={20} />
+          </button>
+          <button 
+            className={cn(
+              "p-2 transition-colors",
+              activePanel === 'extensions' ? "text-blue-400 bg-blue-500/10 rounded-lg" : "text-slate-500 hover:text-slate-300"
+            )}
+            onClick={() => setActivePanel('extensions')}
+            title="Extensions"
+          >
+            <Box size={20} />
           </button>
           <button className="p-2 text-slate-500 hover:text-slate-300 transition-colors" title="Search">
             <Search size={20} />
@@ -418,7 +438,7 @@ export default function App() {
         </aside>
 
         {/* Sidebar */}
-        <Sidebar />
+        {activePanel === 'explorer' ? <Sidebar /> : <Extensions />}
 
         {/* Editor & Terminal Area */}
         <main className="flex-1 flex flex-col min-w-0">

@@ -117,14 +117,14 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({ node, depth }) => {
           {node.type === 'folder' && (
             <>
               <button 
-                onClick={(e) => { e.stopPropagation(); createFile('new-file.js', node.id); setIsExpanded(true); }}
+                onClick={(e) => { e.stopPropagation(); createFile('new-file.js', node.id); if (!isExpanded) toggleFolderOpen(node.id); }}
                 className="p-1 hover:bg-white/10 rounded text-slate-400 hover:text-blue-400 transition-colors"
                 title="New File"
               >
                 <Plus size={14} />
               </button>
               <button 
-                onClick={(e) => { e.stopPropagation(); createFolder('new-folder', node.id); setIsExpanded(true); }}
+                onClick={(e) => { e.stopPropagation(); createFolder('new-folder', node.id); if (!isExpanded) toggleFolderOpen(node.id); }}
                 className="p-1 hover:bg-white/10 rounded text-slate-400 hover:text-blue-400 transition-colors"
                 title="New Folder"
               >

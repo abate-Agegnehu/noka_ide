@@ -29,6 +29,21 @@ export interface FileNode {
   isOpen?: boolean;
 }
 
+export type ActivePanel = 'explorer' | 'extensions';
+
+export interface ExtensionItem {
+  id: string;
+  name: string;
+  displayName?: string;
+  publisher: string;
+  version?: string;
+  description?: string;
+  iconUrl?: string;
+  vsixUrl?: string;
+  installedAt: number;
+  enabled: boolean;
+}
+
 interface IDEState {
   files: Record<string, FileNode>;
   activeFileId: string | null;
@@ -42,6 +57,10 @@ interface IDEState {
   previewUrl: string;
   terminals: { id: string, name: string, initialCommand?: string }[];
   activeTerminalId: string | null;
+  activePanel: ActivePanel;
+  installedExtensions: ExtensionItem[];
+  marketplaceResults: ExtensionItem[];
+  isFetchingMarketplace: boolean;
   
   // Actions
   setPreviewUrl: (url: string) => void;
@@ -66,6 +85,12 @@ interface IDEState {
   toggleFolderOpen: (id: string) => void;
   importFiles: (newFiles: Record<string, FileNode>) => void;
   importSingleFile: (name: string, content: string, parentId: string | null) => string;
+  setActivePanel: (panel: ActivePanel) => void;
+  searchMarketplace: (query: string) => Promise<void>;
+  installExtension: (ext: Omit<ExtensionItem, 'installedAt' | 'enabled'>) => void;
+  uninstallExtension: (extId: string) => void;
+  toggleExtensionEnabled: (extId: string) => void;
+  downloadExtension: (extId: string) => Promise<void>;
 }
 
 const initialFiles: Record<string, FileNode> = {
@@ -155,6 +180,10 @@ export const useIDEStore = create<IDEState>()(
       previewUrl: 'http://localhost:3000',
       terminals: [],
       activeTerminalId: null,
+      activePanel: 'explorer',
+      installedExtensions: [],
+      marketplaceResults: [],
+      isFetchingMarketplace: false,
 
       setPreviewUrl: (url) => set({ previewUrl: url }),
       createFile: (name, parentId, content = '') => {
@@ -359,7 +388,98 @@ export const useIDEStore = create<IDEState>()(
            openFileIds: state.openFileIds.includes(id) ? state.openFileIds : [...state.openFileIds, id]
          }));
          return id;
-       }
+       },
+      setActivePanel: (panel) => set({ activePanel: panel }),
+      searchMarketplace: async (query: string) => {
+        set({ isFetchingMarketplace: true });
+        try {
+          const q = query && query.trim().length > 0 ? query.trim() : 'popular';
+          const res = await fetch(`https://open-vsx.org/api/-/search?size=24&sortBy=downloadCount&query=${encodeURIComponent(q)}`);
+          let items: any[] = [];
+          if (res.ok) {
+            items = await res.json();
+          }
+          const results: ExtensionItem[] = (Array.isArray(items) ? items : []).map((it) => {
+            const publisher = safeString(it.namespace) || safeString(it.publisher) || 'unknown';
+            const name = safeString(it.name) || 'unknown';
+            const id = `${publisher}.${name}`;
+            const displayName = safeString(it.displayName) || safeString(it.title) || name;
+            const description = safeString(it.description);
+            const version = safeString(it.version) || safeString(it.latestVersion);
+            const iconUrl = safeString(it.icon) || safeString(it.iconUrl);
+            return {
+              id,
+              name,
+              displayName,
+              publisher,
+              version,
+              description,
+              iconUrl,
+              installedAt: 0,
+              enabled: false
+            };
+          });
+          set({ marketplaceResults: results, isFetchingMarketplace: false });
+        } catch {
+          set({ marketplaceResults: [], isFetchingMarketplace: false });
+        }
+      },
+      installExtension: (ext) => {
+        set((state) => {
+          if (state.installedExtensions.find(e => e.id === ext.id)) {
+            return {};
+          }
+          const item: ExtensionItem = {
+            ...ext,
+            installedAt: Date.now(),
+            enabled: true
+          };
+          return { installedExtensions: [...state.installedExtensions, item] };
+        });
+      },
+      uninstallExtension: (extId) => {
+        set((state) => ({
+          installedExtensions: state.installedExtensions.filter(e => e.id !== extId)
+        }));
+      },
+      toggleExtensionEnabled: (extId) => {
+        set((state) => ({
+          installedExtensions: state.installedExtensions.map(e => e.id === extId ? { ...e, enabled: !e.enabled } : e)
+        }));
+      },
+      downloadExtension: async (extId) => {
+        const state = get();
+        const ext = state.installedExtensions.find(e => e.id === extId) || state.marketplaceResults.find(e => e.id === extId);
+        if (!ext) return;
+        try {
+          let url = ext.vsixUrl;
+          if (!url) {
+            url = await resolveVsixUrl(ext.publisher, ext.name);
+          }
+          if (!url) {
+            state.addTerminalLog?.(`Unable to resolve VSIX for ${ext.id}`);
+            return;
+          }
+          const res = await fetch(url);
+          if (!res.ok) {
+            state.addTerminalLog?.(`Download failed for ${ext.id}`);
+            return;
+          }
+          const blob = await res.blob();
+          const a = document.createElement('a');
+          const objectUrl = URL.createObjectURL(blob);
+          const fileName = `${ext.publisher}.${ext.name}-${ext.version || 'latest'}.vsix`;
+          a.href = objectUrl;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(objectUrl);
+          state.addTerminalLog?.(`Downloaded ${fileName}`);
+        } catch {
+          state.addTerminalLog?.(`Download error for ${ext.id}`);
+        }
+      }
      }),
     {
       name: 'nova-ide-storage',
@@ -367,3 +487,21 @@ export const useIDEStore = create<IDEState>()(
     }
   )
 );
+
+function safeString(v: unknown): string | undefined {
+  return typeof v === 'string' ? v : undefined;
+}
+
+async function resolveVsixUrl(publisher: string, name: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(`https://open-vsx.org/api/${encodeURIComponent(publisher)}/${encodeURIComponent(name)}/latest`);
+    if (!res.ok) return undefined;
+    const data = await res.json();
+    const files = data?.files || data?.assets || {};
+    const dl = files.download || files.vsix;
+    if (typeof dl === 'string') return dl;
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
