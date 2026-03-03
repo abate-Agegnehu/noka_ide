@@ -20,23 +20,38 @@ app.post("/api/detect-path", (req, res) => {
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: "Name is required" });
 
-  // Heuristic: search for folder name in current directory and parent directory
-  // Prioritize searching within the current directory first (as it's often a subfolder)
+  console.log(`[FS] Detecting path for project: ${name}`);
+
+  // Heuristic: search for folder name in common locations
+  const home = process.env.USERPROFILE || process.env.HOME || "";
   const searchPaths = [
     process.cwd(),
     path.join(process.cwd(), ".."),
     path.join(process.cwd(), "..", ".."),
-    // Also check common locations if the IDE is running within a monorepo structure
-    path.join(process.cwd(), "projects"),
-    path.join(process.cwd(), "workspace"),
+    path.join(home, "Documents", "Github"),
+    path.join(home, "Documents"),
+    path.join(home, "Desktop"),
+    path.join(home, "Downloads"),
+    path.join(home, "Music", "HTML", "react"), // Added specifically for user's structure
+    path.join(home, "Music"),
+    path.join(home, "repos"),
+    path.join(home, "workspace"),
+    path.join(home, "projects"),
   ];
 
   for (const p of searchPaths) {
+    if (!fs.existsSync(p)) continue;
+
+    // Check if the directory itself is the target
+    if (path.basename(p) === name) {
+      console.log(`[FS] Found exact match: ${p}`);
+      return res.json({ path: p });
+    }
+
     const full = path.join(p, name);
     try {
       if (fs.existsSync(full) && fs.statSync(full).isDirectory()) {
-        // eslint-disable-next-line no-console
-        console.log(`Detected project path for "${name}": ${full}`);
+        console.log(`[FS] Detected project path for "${name}": ${full}`);
         return res.json({ path: full });
       }
     } catch (e) {
@@ -44,25 +59,54 @@ app.post("/api/detect-path", (req, res) => {
     }
   }
 
-  // If we couldn't find it as a direct subfolder, try a recursive search one level deep
+  // Deep search in parent directory (one level up from process.cwd())
   try {
-    const entries = fs.readdirSync(process.cwd(), { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const sub = path.join(process.cwd(), entry.name, name);
-        if (fs.existsSync(sub) && fs.statSync(sub).isDirectory()) {
-          // eslint-disable-next-line no-console
-          console.log(
-            `Detected project path for "${name}" (recursive): ${sub}`,
-          );
-          return res.json({ path: sub });
+    const parent = path.join(process.cwd(), "..");
+    if (fs.existsSync(parent)) {
+      console.log(`[FS] Searching in sibling folders of: ${parent}`);
+      const entries = fs.readdirSync(parent, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          // Check if this sibling folder contains the project
+          if (entry.name === name) {
+            const full = path.join(parent, entry.name);
+            console.log(`[FS] Found sibling folder match: ${full}`);
+            return res.json({ path: full });
+          }
+          // Check if the project is a subfolder of this sibling (e.g. monorepo)
+          const sub = path.join(parent, entry.name, name);
+          if (fs.existsSync(sub) && fs.statSync(sub).isDirectory()) {
+            console.log(`[FS] Found sub-sibling match: ${sub}`);
+            return res.json({ path: sub });
+          }
         }
       }
     }
   } catch (e) {}
 
-  // If not found, just return the current working directory as a fallback
-  res.json({ path: process.cwd() });
+  // If not found, try a shallow search in Home subfolders
+  const homeSubfolders = ["Music", "Documents", "Downloads", "Desktop"];
+  for (const sub of homeSubfolders) {
+    const base = path.join(home, sub);
+    if (!fs.existsSync(base)) continue;
+    try {
+      const entries = fs.readdirSync(base, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          const full = path.join(base, entry.name, name);
+          if (fs.existsSync(full) && fs.statSync(full).isDirectory()) {
+            console.log(`[FS] Found deep in Home/${sub}: ${full}`);
+            return res.json({ path: full });
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  // If not found, don't fallback to process.cwd() here.
+  // Returning null allows the frontend to handle fallback behavior or prompt the user.
+  console.log(`[FS] No path detected for: ${name}`);
+  res.json({ path: null });
 });
 
 const server = http.createServer(app);

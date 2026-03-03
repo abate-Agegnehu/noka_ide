@@ -1,5 +1,7 @@
 import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process';
 import { findFreePort } from './portManager';
+import path from 'node:path';
+import fs from 'node:fs';
 
 export interface StartOptions {
   cwd: string;
@@ -25,6 +27,21 @@ export async function startProcess(opts: StartOptions) {
   const port = await findFreePort(3001);
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   
+  // Ensure cwd is absolute and exists
+  let resolvedCwd = opts.cwd;
+  if (resolvedCwd) {
+    if (!path.isAbsolute(resolvedCwd)) {
+      resolvedCwd = path.resolve(process.cwd(), resolvedCwd);
+    }
+    if (!fs.existsSync(resolvedCwd)) {
+      // eslint-disable-next-line no-console
+      console.warn(`Dev Process CWD does not exist: ${resolvedCwd}, falling back to process.cwd()`);
+      resolvedCwd = process.cwd();
+    }
+  } else {
+    resolvedCwd = process.cwd();
+  }
+
   const framework = opts.framework || 'unknown';
   const env = { ...process.env };
   let command = 'npm';
@@ -56,7 +73,7 @@ export async function startProcess(opts: StartOptions) {
     env.HOST = '0.0.0.0';
   }
 
-  const child = spawn(command, args, { cwd: opts.cwd, env, shell: process.platform === 'win32' });
+  const child = spawn(command, args, { cwd: resolvedCwd, env, shell: process.platform === 'win32' });
   const proc: ManagedProcess = { id, child, port, startedAt: Date.now() };
   procs.set(id, proc);
 

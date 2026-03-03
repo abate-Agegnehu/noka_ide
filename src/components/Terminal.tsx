@@ -4,6 +4,7 @@ import { FitAddon } from "xterm-addon-fit";
 import { WebLinksAddon } from "xterm-addon-web-links";
 import { Terminal as TerminalIcon, X, RefreshCw } from "lucide-react";
 import { useIDEStore } from "../store/useIDEStore";
+import { cn } from "../utils/helpers";
 import "xterm/css/xterm.css";
 
 export const Terminal: React.FC = () => {
@@ -77,12 +78,7 @@ export const Terminal: React.FC = () => {
       const rootFolder = Object.values(files).find((f) => f.parentId === null);
       let cwd = runtimeProjectPath || "";
 
-      // If we have a root folder but no path yet, or if the root folder changed,
-      // try to detect the path automatically.  The store will prompt the user
-      // for a path if the backend cannot determine one; when detection returns
-      // nothing we also fall back to a relative path so that projects located
-      // inside the same directory tree as the server still work.
-      if (rootFolder) {
+      if (rootFolder && !runtimeProjectPath) {
         try {
           const detectedPath = await detectProjectPath(rootFolder.name, {
             promptOnFail: false,
@@ -95,7 +91,7 @@ export const Terminal: React.FC = () => {
         }
 
         if (!cwd) {
-          // relative fallback
+          // relative fallback - backend ptyManager is now smart enough to check siblings
           cwd = rootFolder.name;
         }
       }
@@ -122,6 +118,13 @@ export const Terminal: React.FC = () => {
 
       term.open(terminalRef.current!);
       fitAddon.fit();
+      
+      // If we don't have a real path, warn the user in the terminal
+      if (!cwd && rootFolder) {
+        term.write("\r\n\x1b[33m[Nova Warning]: Local project path for \"" + rootFolder.name + "\" not detected.\x1b[0m");
+        term.write("\r\n\x1b[33mThe terminal is running in the IDE root. Click the amber path above to sync.\x1b[0m\r\n\r\n");
+      }
+
       term.focus();
 
       xtermRef.current = term;
@@ -212,6 +215,10 @@ export const Terminal: React.FC = () => {
 
   if (!isTerminalOpen) return null;
 
+  const activeRoot = Object.values(files).find((f) => f.parentId === null);
+  const displayPath = runtimeProjectPath || (activeRoot ? activeRoot.name : "No Project Path");
+  const isPathDetected = !!runtimeProjectPath;
+
   return (
     <div className="h-64 bg-[#0f172a] border-t border-white/5 flex flex-col font-mono text-xs">
       <div className="flex items-center justify-between px-4 py-1.5 bg-slate-900/50 border-b border-white/5">
@@ -222,23 +229,32 @@ export const Terminal: React.FC = () => {
           </span>
           <div className="h-3 w-[1px] bg-white/10 mx-1" />
           <span
-            className="text-[10px] text-slate-500 font-mono truncate max-w-[300px]"
-            title={runtimeProjectPath || "Default Path"}
+            className={cn(
+              "text-[10px] font-mono truncate max-w-[300px]",
+              isPathDetected ? "text-slate-500" : "text-amber-500 font-bold",
+            )}
+            title={isPathDetected ? runtimeProjectPath! : "Path not detected - Terminal running in relative mode"}
           >
-            {runtimeProjectPath || "IDE Path"}
+            {displayPath}
           </span>
           <button
-            onClick={() => {
-              const rootFolder = Object.values(files).find(
-                (f) => f.parentId === null,
-              );
-              if (rootFolder)
-                detectProjectPath(rootFolder.name, { promptOnFail: true });
+            onClick={async () => {
+              if (activeRoot) {
+                const p = await detectProjectPath(activeRoot.name, {
+                  promptOnFail: true,
+                });
+                if (p) {
+                  // The terminal will automatically restart via useEffect
+                }
+              }
             }}
-            className="p-1 hover:bg-white/10 rounded text-slate-500 hover:text-blue-400 transition-colors ml-1"
-            title="Sync with Active Project"
+            className={cn(
+              "p-1 hover:bg-white/10 rounded transition-colors ml-1",
+              isPathDetected ? "text-slate-500" : "text-amber-500 bg-amber-500/10 hover:bg-amber-500/20",
+            )}
+            title={isPathDetected ? "Sync Project Path" : "Set Project Path (Required for real runtime)"}
           >
-            <RefreshCw size={10} />
+            <RefreshCw size={10} className={cn(!isPathDetected && "animate-pulse")} />
           </button>
           {isRunning && (
             <div className="flex items-center gap-2 ml-4">
