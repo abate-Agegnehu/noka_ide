@@ -61,6 +61,11 @@ interface IDEState {
   installedExtensions: ExtensionItem[];
   marketplaceResults: ExtensionItem[];
   isFetchingMarketplace: boolean;
+  formatOnSave: boolean;
+  iconTheme: 'emoji' | 'material';
+  runtimeProjectPath?: string | null;
+  runtimeProcessId?: string | null;
+  runtimeConnected: boolean;
   
   // Actions
   setPreviewUrl: (url: string) => void;
@@ -91,6 +96,11 @@ interface IDEState {
   uninstallExtension: (extId: string) => void;
   toggleExtensionEnabled: (extId: string) => void;
   downloadExtension: (extId: string) => Promise<void>;
+  setFormatOnSave: (v: boolean) => void;
+  setIconTheme: (v: 'emoji' | 'material') => void;
+  setRuntimeProjectPath: (p: string | null) => void;
+  setRuntimeConnected: (v: boolean) => void;
+  setRuntimeProcessId: (id: string | null) => void;
 }
 
 const initialFiles: Record<string, FileNode> = {
@@ -177,13 +187,18 @@ export const useIDEStore = create<IDEState>()(
         'Type "help" to see available commands.',
       ],
       isRunning: false,
-      previewUrl: 'http://localhost:3000',
+      previewUrl: '',
       terminals: [],
       activeTerminalId: null,
       activePanel: 'explorer',
       installedExtensions: [],
       marketplaceResults: [],
       isFetchingMarketplace: false,
+      formatOnSave: false,
+      iconTheme: 'emoji',
+      runtimeProjectPath: null,
+      runtimeProcessId: null,
+      runtimeConnected: false,
 
       setPreviewUrl: (url) => set({ previewUrl: url }),
       createFile: (name, parentId, content = '') => {
@@ -390,36 +405,66 @@ export const useIDEStore = create<IDEState>()(
          return id;
        },
       setActivePanel: (panel) => set({ activePanel: panel }),
+      setFormatOnSave: (v) => set({ formatOnSave: v }),
+      setIconTheme: (v) => set({ iconTheme: v }),
+      setRuntimeProjectPath: (p) => set({ runtimeProjectPath: p }),
+      setRuntimeConnected: (v) => set({ runtimeConnected: v }),
+      setRuntimeProcessId: (id) => set({ runtimeProcessId: id }),
       searchMarketplace: async (query: string) => {
         set({ isFetchingMarketplace: true });
         try {
           const q = query && query.trim().length > 0 ? query.trim() : 'popular';
-          const res = await fetch(`https://open-vsx.org/api/-/search?size=24&sortBy=downloadCount&query=${encodeURIComponent(q)}`);
-          let items: any[] = [];
-          if (res.ok) {
-            items = await res.json();
+          async function searchOnce(term: string): Promise<ExtensionItem[]> {
+            const res = await fetch(`https://open-vsx.org/api/-/search?size=24&sortBy=downloadCount&query=${encodeURIComponent(term)}`);
+            if (!res.ok) return [];
+            const items: any[] = await res.json();
+            return (Array.isArray(items) ? items : []).map((it) => {
+              const publisher = safeString(it.namespace) || safeString(it.publisher) || 'unknown';
+              const name = safeString(it.name) || 'unknown';
+              const id = `${publisher}.${name}`;
+              const displayName = safeString(it.displayName) || safeString(it.title) || name;
+              const description = safeString(it.description);
+              const version = safeString(it.version) || safeString(it.latestVersion);
+              const iconUrl = safeString(it.icon) || safeString(it.iconUrl);
+              return { id, name, displayName, publisher, version, description, iconUrl, installedAt: 0, enabled: false };
+            });
           }
-          const results: ExtensionItem[] = (Array.isArray(items) ? items : []).map((it) => {
-            const publisher = safeString(it.namespace) || safeString(it.publisher) || 'unknown';
-            const name = safeString(it.name) || 'unknown';
-            const id = `${publisher}.${name}`;
-            const displayName = safeString(it.displayName) || safeString(it.title) || name;
-            const description = safeString(it.description);
-            const version = safeString(it.version) || safeString(it.latestVersion);
-            const iconUrl = safeString(it.icon) || safeString(it.iconUrl);
-            return {
-              id,
-              name,
-              displayName,
-              publisher,
-              version,
-              description,
-              iconUrl,
-              installedAt: 0,
-              enabled: false
-            };
-          });
-          set({ marketplaceResults: results, isFetchingMarketplace: false });
+          let results: ExtensionItem[] = await searchOnce(q);
+          if (results.length === 0) {
+            if (!q.includes(' ')) {
+              const fallbacks = [`${q} formatter`, `${q} format`, `format`, `formatter`];
+              for (const f of fallbacks) {
+                const more = await searchOnce(f);
+                if (more.length > 0) {
+                  results = more;
+                  break;
+                }
+              }
+            }
+            if (results.length === 0) {
+              try {
+                const msResults = await searchVsMarketplace(q);
+                if (msResults.length > 0) results = msResults;
+              } catch {}
+            }
+            if (results.length === 0 && /prettier/i.test(q)) {
+              results = [{
+                id: 'esbenp.prettier-vscode',
+                name: 'prettier-vscode',
+                displayName: 'Prettier - Code formatter',
+                publisher: 'esbenp',
+                version: undefined,
+                description: 'Code formatter using Prettier',
+                iconUrl: 'https://raw.githubusercontent.com/prettier/prettier-logo/master/images/prettier-icon.png',
+                vsixUrl: undefined,
+                installedAt: 0,
+                enabled: false
+              }];
+            }
+          }
+          const dedup: Record<string, ExtensionItem> = {};
+          results.forEach(r => { dedup[r.id] = r; });
+          set({ marketplaceResults: Object.values(dedup), isFetchingMarketplace: false });
         } catch {
           set({ marketplaceResults: [], isFetchingMarketplace: false });
         }
@@ -434,18 +479,24 @@ export const useIDEStore = create<IDEState>()(
             installedAt: Date.now(),
             enabled: true
           };
-          return { installedExtensions: [...state.installedExtensions, item] };
+          const installedExtensions = [...state.installedExtensions, item];
+          const iconTheme = computeIconTheme(installedExtensions);
+          return { installedExtensions, iconTheme };
         });
       },
       uninstallExtension: (extId) => {
-        set((state) => ({
-          installedExtensions: state.installedExtensions.filter(e => e.id !== extId)
-        }));
+        set((state) => {
+          const installedExtensions = state.installedExtensions.filter(e => e.id !== extId);
+          const iconTheme = computeIconTheme(installedExtensions);
+          return { installedExtensions, iconTheme };
+        });
       },
       toggleExtensionEnabled: (extId) => {
-        set((state) => ({
-          installedExtensions: state.installedExtensions.map(e => e.id === extId ? { ...e, enabled: !e.enabled } : e)
-        }));
+        set((state) => {
+          const installedExtensions = state.installedExtensions.map(e => e.id === extId ? { ...e, enabled: !e.enabled } : e);
+          const iconTheme = computeIconTheme(installedExtensions);
+          return { installedExtensions, iconTheme };
+        });
       },
       downloadExtension: async (extId) => {
         const state = get();
@@ -455,6 +506,21 @@ export const useIDEStore = create<IDEState>()(
           let url = ext.vsixUrl;
           if (!url) {
             url = await resolveVsixUrl(ext.publisher, ext.name);
+          }
+          if (!url) {
+            const ms = await resolveVsixFromMarketplace(ext.publisher, ext.name);
+            if (ms) url = ms;
+          }
+          if (!url && ext.id === 'esbenp.prettier-vscode') {
+            try {
+              const r = await fetch('https://api.github.com/repos/prettier/prettier-vscode/releases/latest');
+              if (r.ok) {
+                const data = await r.json();
+                const assets: any[] = data?.assets || [];
+                const vsix = assets.find(a => typeof a?.browser_download_url === 'string' && a.browser_download_url.endsWith('.vsix'));
+                if (vsix?.browser_download_url) url = vsix.browser_download_url;
+              }
+            } catch {}
           }
           if (!url) {
             state.addTerminalLog?.(`Unable to resolve VSIX for ${ext.id}`);
@@ -492,6 +558,21 @@ function safeString(v: unknown): string | undefined {
   return typeof v === 'string' ? v : undefined;
 }
 
+function computeIconTheme(installed: ExtensionItem[]): 'emoji' | 'material' {
+  const hasMaterial = installed.some(e => {
+    const id = (e.id || '').toLowerCase();
+    const name = (e.name || '').toLowerCase();
+    const dn = (e.displayName || '').toLowerCase();
+    const pub = (e.publisher || '').toLowerCase();
+    return e.enabled && (
+      id.includes('material-icon-theme') ||
+      dn.includes('material icon theme') ||
+      (pub === 'pkief' && (name.includes('material') || dn.includes('material')))
+    );
+  });
+  return hasMaterial ? 'material' : 'emoji';
+}
+
 async function resolveVsixUrl(publisher: string, name: string): Promise<string | undefined> {
   try {
     const res = await fetch(`https://open-vsx.org/api/${encodeURIComponent(publisher)}/${encodeURIComponent(name)}/latest`);
@@ -504,4 +585,66 @@ async function resolveVsixUrl(publisher: string, name: string): Promise<string |
   } catch {
     return undefined;
   }
+}
+
+async function searchVsMarketplace(query: string): Promise<ExtensionItem[]> {
+  try {
+    const body = {
+      filters: [
+        {
+          criteria: [
+            { filterType: 10, value: query },
+            { filterType: 12, value: 'Microsoft.VisualStudio.Code' }
+          ],
+          pageNumber: 1,
+          pageSize: 24,
+          sortBy: 0,
+          sortOrder: 0
+        }
+      ],
+      assetTypes: [],
+      flags: 914
+    };
+    const res = await fetch('https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json;api-version=7.1-preview.1'
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const exts: any[] = data?.results?.[0]?.extensions || [];
+    const out: ExtensionItem[] = exts.map((e) => {
+      const publisher = e?.publisher?.publisherName || 'unknown';
+      const name = e?.extensionName || 'extension';
+      const id = `${publisher}.${name}`;
+      const displayName = e?.displayName || name;
+      const description = e?.shortDescription || '';
+      const version = e?.versions?.[0]?.version;
+      let iconUrl: string | undefined;
+      try {
+        const files: any[] = e?.versions?.[0]?.files || [];
+        const icon = files.find(f => typeof f?.assetType === 'string' && f.assetType.toLowerCase().includes('icon'));
+        iconUrl = icon?.source;
+      } catch {}
+      let vsixUrl: string | undefined;
+      try {
+        const files: any[] = e?.versions?.[0]?.files || [];
+        const vsix = files.find(f => f.assetType === 'Microsoft.VisualStudio.Services.VSIXPackage');
+        vsixUrl = vsix?.source;
+      } catch {}
+      return { id, name, displayName, publisher, version, description, iconUrl, vsixUrl, installedAt: 0, enabled: false };
+    });
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+async function resolveVsixFromMarketplace(publisher: string, name: string): Promise<string | undefined> {
+  const items = await searchVsMarketplace(`${publisher}.${name}`);
+  const match = items.find(i => i.publisher.toLowerCase() === publisher.toLowerCase() && i.name.toLowerCase() === name.toLowerCase());
+  return match?.vsixUrl;
 }

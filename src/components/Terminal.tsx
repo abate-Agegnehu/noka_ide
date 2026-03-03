@@ -143,7 +143,7 @@ export const Terminal: React.FC = () => {
             addTerminalLog('  Server started successfully on port 3000 (Simulated)');
             addTerminalLog(`  ➜  Local:   ${url}/ (Simulated)`);
           }
-          setPreviewUrl(url);
+          // Do not set previewUrl for simulated runs to avoid loading NovaIDE (port 3000)
           addTerminalLog('  ➜  Network: use --host to expose');
           addTerminalLog('  ➜  Note: This is a simulated environment. The preview is only available in the Preview tab.');
           addTerminalLog('  ➜  press h + enter to show help');

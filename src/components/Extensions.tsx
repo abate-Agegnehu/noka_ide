@@ -17,6 +17,7 @@ export const Extensions: React.FC = () => {
   } = useIDEStore();
   const [tab, setTab] = React.useState<'marketplace' | 'installed'>('marketplace');
   const [query, setQuery] = React.useState('');
+  const [vsixUrl, setVsixUrl] = React.useState('');
   const searchRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -61,6 +62,53 @@ export const Extensions: React.FC = () => {
             className="w-full pl-7 pr-3 py-1.5 rounded bg-slate-900 border border-white/10 text-sm text-slate-200 outline-none focus:border-blue-500"
           />
         </form>
+        <div className="mt-2">
+          <div className="text-[11px] text-slate-500">
+            If results are empty, the publisher may not be on Open VSX. Try the exact identifier or install from a VSIX URL.
+          </div>
+          <div className="mt-2 flex gap-2">
+            <input
+              value={vsixUrl}
+              onChange={(e) => setVsixUrl(e.target.value)}
+              placeholder="https://.../extension.vsix"
+              className="flex-1 px-2 py-1 rounded bg-slate-900 border border-white/10 text-xs text-slate-200 outline-none focus:border-blue-500"
+            />
+            <button
+              onClick={() => {
+                if (!vsixUrl.trim()) return;
+                try {
+                  const url = new URL(vsixUrl.trim());
+                  const file = url.pathname.split('/').pop() || 'extension.vsix';
+                  const base = file.replace(/\.vsix$/i, '');
+                  const parts = base.split(/[-_]/);
+                  let publisher = 'unknown';
+                  let name = 'extension';
+                  if (parts.length >= 2) {
+                    publisher = parts[0];
+                    name = parts[1];
+                  }
+                  installExtension({
+                    id: `${publisher}.${name}`,
+                    name,
+                    displayName: name,
+                    publisher,
+                    version: undefined,
+                    description: 'Installed from VSIX URL',
+                    iconUrl: undefined,
+                    vsixUrl: vsixUrl.trim()
+                  });
+                  setTab('installed');
+                  setVsixUrl('');
+                } catch {
+                  // ignore invalid URL
+                }
+              }}
+              className="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 border border-white/10 rounded"
+            >
+              Add from VSIX URL
+            </button>
+          </div>
+        </div>
         <div className="mt-3 flex gap-2">
           <button
             className={cn(
@@ -94,7 +142,10 @@ export const Extensions: React.FC = () => {
               <div className="px-2 py-3 text-xs text-slate-500">Loading...</div>
             )}
             {!isFetchingMarketplace && marketplaceResults.length === 0 && (
-              <div className="px-2 py-3 text-xs text-slate-500">No results</div>
+              <div className="px-2 py-3 text-xs text-slate-500">
+                No results for “{query || 'popular'}”. Some extensions (e.g., Prettier) are not published on Open VSX.
+                Try synonyms like “format” or install from a VSIX URL above.
+              </div>
             )}
             {marketplaceResults.map((ext) => {
               const installed = isInstalled(ext.id);

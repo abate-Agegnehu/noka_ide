@@ -15,6 +15,18 @@ export const Preview: React.FC = () => {
     setUrlInput(previewUrl);
   }, [previewUrl]);
 
+  // Auto-switch to live server when a real URL is detected
+  useEffect(() => {
+    try {
+      if (isRunning && previewUrl) {
+        const u = new URL(previewUrl);
+        if (u.port !== '3000') {
+          setIsSimulated(false);
+        }
+      }
+    } catch {}
+  }, [isRunning, previewUrl]);
+
   // Update previewUrl when input changes (debounced or on blur)
   const handleUrlBlur = () => {
     setPreviewUrl(urlInput);
@@ -356,12 +368,20 @@ export const Preview: React.FC = () => {
             className="p-1.5 hover:bg-slate-200 rounded text-slate-500 transition-colors disabled:opacity-30 relative group"
             title="Open in New Tab"
             disabled={!isRunning}
-            onClick={() => alert("This project is running in a browser-simulated environment. It cannot be opened in a new tab because there is no real local server at port 5173.")}
+            onClick={() => {
+              if (isSimulated) {
+                alert("This project is currently running in simulation. Switch to Live Server to open in a new tab.");
+              } else if (previewUrl) {
+                window.open(previewUrl, '_blank', 'noopener,noreferrer');
+              }
+            }}
           >
             <ExternalLink size={14} />
-            <div className="hidden group-hover:block absolute top-full right-0 mt-2 p-2 bg-slate-800 text-white text-[9px] rounded shadow-xl z-50 w-40">
-              Not available in simulation
-            </div>
+            {isSimulated && (
+              <div className="hidden group-hover:block absolute top-full right-0 mt-2 p-2 bg-slate-800 text-white text-[9px] rounded shadow-xl z-50 w-40">
+                Not available in simulation
+              </div>
+            )}
           </button>
         </div>
       </div>

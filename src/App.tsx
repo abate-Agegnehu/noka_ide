@@ -36,6 +36,11 @@ export default function App() {
     files, 
     activePanel,
     setActivePanel,
+    runtimeProjectPath,
+    setRuntimeProjectPath,
+    setPreviewUrl,
+    addTerminalLog,
+    setRunning,
     createFile, 
     createFolder, 
     importFiles, 
@@ -43,14 +48,13 @@ export default function App() {
     isTerminalOpen,
     toggleTerminal,
     isRunning,
-    setRunning,
-    addTerminalLog,
     addTerminal,
     activeTerminalId,
     setActiveTerminal
   } = useIDEStore();
 
   const activeFile = activeFileId ? files[activeFileId] : null;
+  const lastStartedPortRef = useRef<number | null>(null);
 
   const handleRunProject = () => {
     if (!isTerminalOpen) toggleTerminal();
@@ -74,12 +78,67 @@ export default function App() {
       // For now, we just update the UI state
     } else {
       const scripts = packageJson?.scripts || {};
-      const scriptToRun = scripts.dev ? 'npm run dev' : (scripts.start ? 'npm start' : 'npm run dev');
-      
-      setRunning(true);
-      
-      // Spawn a new real terminal for the run command
-      addTerminal(`Run: ${scriptToRun}`, scriptToRun);
+      const framework = packageJson?.dependencies?.vite ? 'vite'
+        : packageJson?.dependencies?.next ? 'next'
+        : 'unknown';
+      const scriptToRun = scripts.dev ? 'dev' : (scripts.start ? 'start' : 'dev');
+
+      try {
+        // Attempt real runtime via backend WS
+        // Require a project path on disk; ask once if absent
+        let cwd = runtimeProjectPath || '';
+        if (!cwd) {
+          const p = window.prompt('Enter local project path to run (absolute path):', 'C:\\path\\to\\your\\project');
+          if (!p) return;
+          setRuntimeProjectPath(p);
+          cwd = p;
+        }
+        addTerminalLog(`Starting ${projectName} on a free port...`);
+        import('./runtime/RuntimeClient').then(({ RuntimeClient }) => {
+          const client = new RuntimeClient();
+          client.on((e) => {
+            if (e.type === 'open') addTerminalLog('Connected to runtime');
+            if (e.type === 'started') {
+              setRunning(true);
+              addTerminalLog(`Process started (id=${e.id}) on port ${e.port}`);
+              lastStartedPortRef.current = e.port;
+            }
+            if (e.type === 'url') {
+              try {
+                const idePort = window.location.port || '3000';
+                const parsed = new URL(e.url);
+                let target = e.url;
+                if (parsed.port === idePort || parsed.port === '3000') {
+                  if (lastStartedPortRef.current) {
+                    target = `http://localhost:${lastStartedPortRef.current}`;
+                  }
+                }
+                setPreviewUrl(target);
+                addTerminalLog(`Detected server URL: ${target}`);
+              } catch {
+                setPreviewUrl(e.url);
+                addTerminalLog(`Detected server URL: ${e.url}`);
+              }
+            }
+            if (e.type === 'log') {
+              addTerminalLog(e.data.trimEnd());
+            }
+            if (e.type === 'stopped') {
+              setRunning(false);
+              addTerminalLog('Server stopped.');
+            }
+            if (e.type === 'error') {
+              addTerminalLog(`Runtime error: ${e.message}`);
+            }
+          });
+          client.start(cwd, framework, scriptToRun);
+        });
+      } catch (e) {
+        console.error(e);
+        addTerminalLog('Failed to start runtime; falling back to simulation.');
+        setRunning(true);
+        addTerminal(`Run: npm run ${scriptToRun}`, `npm run ${scriptToRun}`);
+      }
     }
   };
   const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);

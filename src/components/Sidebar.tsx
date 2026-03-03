@@ -10,7 +10,7 @@ interface FileTreeItemProps {
 }
 
 const FileTreeItem: React.FC<FileTreeItemProps> = ({ node, depth }) => {
-  const { files, setActiveFile, activeFileId, deleteNode, renameNode, createFile, createFolder, toggleFolderOpen } = useIDEStore();
+  const { files, setActiveFile, activeFileId, deleteNode, renameNode, createFile, createFolder, toggleFolderOpen, iconTheme } = useIDEStore();
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(node.name);
   const [showMenu, setShowMenu] = useState(false);
@@ -95,8 +95,12 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({ node, depth }) => {
             <span className="w-3.5" />
           )}
         </span>
-        <span className="mr-2 text-lg leading-none">
-          {getFileIcon(node.name, node.type, isExpanded)}
+        <span className="mr-2 text-lg leading-none w-4 h-4 flex items-center justify-center">
+          {(() => {
+            const icon = getFileIcon(node.name, node.type, isExpanded, iconTheme);
+            if (icon.kind === 'emoji') return <span>{icon.text}</span>;
+            return <img src={icon.src} alt="" className="w-4 h-4" crossOrigin="anonymous" />;
+          })()}
         </span>
         
         {isEditing ? (
