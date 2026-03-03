@@ -169,13 +169,18 @@ wss.on("connection", (ws) => {
         const ok = stopProcess(msg.id);
         ws.send(JSON.stringify({ type: "stopped", id: msg.id, ok }));
       } else if (msg.type === "pty-start") {
-        const session = createPtySession(msg.id, msg.cwd);
+        const session = createPtySession(msg.id, msg.cwd, (data) => {
+          ws.send(JSON.stringify({ type: "pty-output", id: msg.id, data }));
+          
+          // Automatic URL detection from terminal output
+          const url = extractUrlFromLogs(data);
+          if (url) {
+            ws.send(JSON.stringify({ type: "url", id: "terminal-url", url }));
+          }
+        });
         if (msg.cols && msg.rows) {
           session.pty.resize(msg.cols, msg.rows);
         }
-        session.pty.onData((data) => {
-          ws.send(JSON.stringify({ type: "pty-output", id: msg.id, data }));
-        });
         session.pty.onExit(({ exitCode, signal }) => {
           ws.send(
             JSON.stringify({

@@ -13,7 +13,7 @@ export interface PtySession {
 
 const sessions = new Map<string, PtySession>();
 
-export function createPtySession(id: string, cwd: string): PtySession {
+export function createPtySession(id: string, cwd: string, onData?: (data: string) => void): PtySession {
   let ptyProcess: pty.IPty;
 
   // Ensure cwd is absolute and exists
@@ -78,6 +78,10 @@ export function createPtySession(id: string, cwd: string): PtySession {
 
   const session = { id, pty: ptyProcess };
   sessions.set(id, session);
+
+  if (onData) {
+    ptyProcess.onData(onData);
+  }
 
   ptyProcess.onExit(() => {
     sessions.delete(id);

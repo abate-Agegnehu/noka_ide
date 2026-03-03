@@ -1,11 +1,19 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Terminal as XTerm } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import { WebLinksAddon } from "xterm-addon-web-links";
-import { Terminal as TerminalIcon, X, RefreshCw } from "lucide-react";
+import { Terminal as TerminalIcon, X, RefreshCw, Plus } from "lucide-react";
 import { useIDEStore } from "../store/useIDEStore";
 import { cn } from "../utils/helpers";
 import "xterm/css/xterm.css";
+
+interface TerminalInstance {
+  id: string;
+  term: XTerm;
+  fitAddon: FitAddon;
+  ws: WebSocket;
+  element: HTMLDivElement;
+}
 
 export const Terminal: React.FC = () => {
   const {
@@ -16,90 +24,63 @@ export const Terminal: React.FC = () => {
     setRuntimeProjectPath,
     detectProjectPath,
     files,
+    terminals,
+    activeTerminalId,
+    addTerminal,
+    removeTerminal,
+    setActiveTerminal,
   } = useIDEStore();
 
-  const terminalRef = useRef<HTMLDivElement>(null);
-  const xtermRef = useRef<XTerm | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
-  // track last seen root folder id so we can detect project changes even when
-  // the folder name stays the same (users may open multiple projects named
-  // "project" etc).
+  const terminalContainerRef = useRef<HTMLDivElement>(null);
+  const instancesRef = useRef<Record<string, TerminalInstance>>({});
   const prevRootIdRef = useRef<string | null>(null);
 
-  // Detect and update project path when the active root folder changes. calling
-  // `detectProjectPath` on every change keeps the runtime cwd in sync with the
-  // workspace state.
+  // Initialize first terminal if none exist
+  useEffect(() => {
+    if (terminals.length === 0) {
+      addTerminal("Terminal 1");
+    }
+  }, [terminals.length, addTerminal]);
+
+  // Detect project path
   useEffect(() => {
     const rootFolder = Object.values(files).find((f) => f.parentId === null);
     const rootId = rootFolder?.id || null;
 
-    // If the root folder object changed (new project) or we have no cwd yet,
-    // probe for a path on disk.
     if (rootFolder) {
       if (rootId !== prevRootIdRef.current) {
         prevRootIdRef.current = rootId;
-        // clear any stale path before attempting detection so that the effect
-        // which re‑initializes the terminal will fire properly
         if (runtimeProjectPath) {
           setRuntimeProjectPath(null);
         }
         detectProjectPath(rootFolder.name, { promptOnFail: false });
       } else if (!runtimeProjectPath) {
-        // root didn't change but we still don't have a path (initial load)
         detectProjectPath(rootFolder.name, { promptOnFail: false });
       }
     }
   }, [files, runtimeProjectPath, detectProjectPath, setRuntimeProjectPath]);
 
-  // Restart terminal when project path changes
+  // Clean up terminal instances when project path changes
   useEffect(() => {
-    if (xtermRef.current) {
-      xtermRef.current.dispose();
-      xtermRef.current = null;
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(
-          JSON.stringify({ type: "pty-kill", id: "main-terminal" }),
-        );
-        wsRef.current.close();
+    Object.values(instancesRef.current).forEach((instance) => {
+      instance.term.dispose();
+      if (instance.ws.readyState === WebSocket.OPEN) {
+        instance.ws.send(JSON.stringify({ type: "pty-kill", id: instance.id }));
+        instance.ws.close();
       }
-    }
+      instance.element.remove();
+    });
+    instancesRef.current = {};
   }, [runtimeProjectPath]);
 
+  // Manage terminal instances for each tab
   useEffect(() => {
-    if (!isTerminalOpen || !terminalRef.current || xtermRef.current) return;
+    if (!isTerminalOpen || !terminalContainerRef.current) return;
 
-    let isMounted = true;
-    let ws: WebSocket | null = null;
-    let term: XTerm | null = null;
+    terminals.forEach((t) => {
+      if (instancesRef.current[t.id]) return;
 
-    const initializeTerminal = async () => {
-      // Find the root folder name from the sidebar files
-      const rootFolder = Object.values(files).find((f) => f.parentId === null);
-      let cwd = runtimeProjectPath || "";
-
-      if (rootFolder && !runtimeProjectPath) {
-        try {
-          const detectedPath = await detectProjectPath(rootFolder.name, {
-            promptOnFail: false,
-          });
-          if (detectedPath) {
-            cwd = detectedPath;
-          }
-        } catch (e) {
-          console.warn("Backend offline or path detection failed");
-        }
-
-        if (!cwd) {
-          // relative fallback - backend ptyManager is now smart enough to check siblings
-          cwd = rootFolder.name;
-        }
-      }
-
-      if (!isMounted || !terminalRef.current) return;
-
-      // Initialize xterm
-      term = new XTerm({
+      const term = new XTerm({
         theme: {
           background: "#0f172a",
           foreground: "#f8fafc",
@@ -116,102 +97,93 @@ export const Terminal: React.FC = () => {
       term.loadAddon(fitAddon);
       term.loadAddon(new WebLinksAddon());
 
-      term.open(terminalRef.current!);
+      // Create a hidden container for each terminal
+      const el = document.createElement("div");
+      el.style.width = "100%";
+      el.style.height = "100%";
+      el.style.display = t.id === activeTerminalId ? "block" : "none";
+      terminalContainerRef.current?.appendChild(el);
+
+      term.open(el);
       fitAddon.fit();
-      
-      // If we don't have a real path, warn the user in the terminal
-      if (!cwd && rootFolder) {
-        term.write("\r\n\x1b[33m[Nova Warning]: Local project path for \"" + rootFolder.name + "\" not detected.\x1b[0m");
-        term.write("\r\n\x1b[33mThe terminal is running in the IDE root. Click the amber path above to sync.\x1b[0m\r\n\r\n");
-      }
 
-      term.focus();
-
-      xtermRef.current = term;
-      fitAddonRef.current = fitAddon;
-
-      // Connect to WebSocket
-      ws = new WebSocket(`ws://${window.location.hostname}:3005`);
-      wsRef.current = ws;
-
-      const terminalId = "main-terminal";
+      const ws = new WebSocket(`ws://${window.location.hostname}:3005`);
 
       ws.onopen = () => {
-        if (!ws) return;
-        // Start PTY session
+        const rootFolder = Object.values(files).find((f) => f.parentId === null);
+        const cwd = runtimeProjectPath || (rootFolder ? rootFolder.name : "");
         ws.send(
           JSON.stringify({
             type: "pty-start",
-            id: terminalId,
+            id: t.id,
             cwd: cwd || "",
-            cols: term?.cols,
-            rows: term?.rows,
+            cols: term.cols,
+            rows: term.rows,
           }),
         );
       };
 
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
-        if (msg.type === "pty-output" && msg.id === terminalId) {
-          term?.write(msg.data);
-        } else if (msg.type === "error") {
-          term?.write(
-            "\r\n\x1b[31m[Nova Error]: " + msg.message + "\x1b[0m\r\n",
-          );
+        if (msg.type === "pty-output" && msg.id === t.id) {
+          term.write(msg.data);
+        } else if (msg.type === "url") {
+          useIDEStore.getState().setPreviewUrl(msg.url);
         }
       };
 
-      ws.onerror = () => {
-        term?.write(
-          '\r\n\x1b[31m[Nova Error]: Failed to connect to backend server (port 3005). Please ensure the backend is running with "npm run server".\x1b[0m\r\n',
-        );
-      };
-
       term.onData((data) => {
-        if (ws?.readyState === WebSocket.OPEN) {
-          ws.send(
-            JSON.stringify({
-              type: "pty-input",
-              id: terminalId,
-              data,
-            }),
-          );
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "pty-input", id: t.id, data }));
         }
       });
 
       term.onResize(({ cols, rows }) => {
-        if (ws?.readyState === WebSocket.OPEN) {
-          ws.send(
-            JSON.stringify({
-              type: "pty-resize",
-              id: terminalId,
-              cols,
-              rows,
-            }),
-          );
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "pty-resize", id: t.id, cols, rows }));
         }
       });
-    };
 
-    initializeTerminal();
+      instancesRef.current[t.id] = { id: t.id, term, fitAddon, ws, element: el };
+    });
 
-    const handleResize = () => {
-      if (fitAddonRef.current) fitAddonRef.current.fit();
-    };
-
-    window.addEventListener("resize", handleResize);
-
-    return () => {
-      isMounted = false;
-      window.removeEventListener("resize", handleResize);
-      if (term) term.dispose();
-      xtermRef.current = null;
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "pty-kill", id: "main-terminal" }));
-        ws.close();
+    // Update visibility and focus
+    Object.keys(instancesRef.current).forEach((id) => {
+      const instance = instancesRef.current[id];
+      if (instance.element) {
+        instance.element.style.display = id === activeTerminalId ? "block" : "none";
+        if (id === activeTerminalId) {
+          setTimeout(() => {
+            instance.term.focus();
+            instance.fitAddon.fit();
+          }, 0);
+        }
       }
+    });
+
+    // Cleanup removed terminals
+    const currentIds = terminals.map((t) => t.id);
+    Object.keys(instancesRef.current).forEach((id) => {
+      if (!currentIds.includes(id)) {
+        const instance = instancesRef.current[id];
+        instance.term.dispose();
+        if (instance.ws.readyState === WebSocket.OPEN) {
+          instance.ws.send(JSON.stringify({ type: "pty-kill", id }));
+          instance.ws.close();
+        }
+        instance.element.remove();
+        delete instancesRef.current[id];
+      }
+    });
+  }, [terminals, activeTerminalId, isTerminalOpen, files, runtimeProjectPath]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      Object.values(instancesRef.current).forEach((inst) => inst.fitAddon.fit());
     };
-  }, [isTerminalOpen, runtimeProjectPath, files, detectProjectPath]);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   if (!isTerminalOpen) return null;
 
@@ -221,59 +193,79 @@ export const Terminal: React.FC = () => {
 
   return (
     <div className="h-64 bg-[#0f172a] border-t border-white/5 flex flex-col font-mono text-xs">
-      <div className="flex items-center justify-between px-4 py-1.5 bg-slate-900/50 border-b border-white/5">
-        <div className="flex items-center gap-2 text-slate-400">
-          <TerminalIcon size={12} />
-          <span className="font-semibold uppercase tracking-wider text-[10px]">
-            System Terminal
-          </span>
-          <div className="h-3 w-[1px] bg-white/10 mx-1" />
+      <div className="flex items-center justify-between px-2 bg-slate-900/50 border-b border-white/5 h-8">
+        <div className="flex items-center gap-1 h-full overflow-x-auto no-scrollbar">
+          {terminals.map((t) => (
+            <div
+              key={t.id}
+              onClick={() => setActiveTerminal(t.id)}
+              className={cn(
+                "flex items-center gap-2 px-3 h-full cursor-pointer border-r border-white/5 min-w-[120px] transition-colors relative group",
+                activeTerminalId === t.id
+                  ? "bg-[#0f172a] text-blue-400"
+                  : "hover:bg-white/5 text-slate-500"
+              )}
+            >
+              <TerminalIcon size={12} />
+              <span className="truncate max-w-[80px]">{t.name}</span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeTerminal(t.id);
+                }}
+                className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-white/10 rounded ml-auto"
+              >
+                <X size={10} />
+              </button>
+              {activeTerminalId === t.id && (
+                <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500" />
+              )}
+            </div>
+          ))}
+          <button
+            onClick={() => addTerminal()}
+            className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-white/5 rounded mx-1"
+            title="Add New Terminal"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 px-4">
           <span
             className={cn(
-              "text-[10px] font-mono truncate max-w-[300px]",
-              isPathDetected ? "text-slate-500" : "text-amber-500 font-bold",
+              "text-[10px] font-mono truncate max-w-[200px]",
+              isPathDetected ? "text-slate-500" : "text-amber-500 font-bold"
             )}
-            title={isPathDetected ? runtimeProjectPath! : "Path not detected - Terminal running in relative mode"}
+            title={isPathDetected ? runtimeProjectPath! : "Path not detected"}
           >
             {displayPath}
           </span>
           <button
             onClick={async () => {
               if (activeRoot) {
-                const p = await detectProjectPath(activeRoot.name, {
-                  promptOnFail: true,
-                });
-                if (p) {
-                  // The terminal will automatically restart via useEffect
-                }
+                await detectProjectPath(activeRoot.name, { promptOnFail: true });
               }
             }}
             className={cn(
-              "p-1 hover:bg-white/10 rounded transition-colors ml-1",
-              isPathDetected ? "text-slate-500" : "text-amber-500 bg-amber-500/10 hover:bg-amber-500/20",
+              "p-1 hover:bg-white/10 rounded transition-colors",
+              isPathDetected ? "text-slate-500" : "text-amber-500"
             )}
-            title={isPathDetected ? "Sync Project Path" : "Set Project Path (Required for real runtime)"}
           >
             <RefreshCw size={10} className={cn(!isPathDetected && "animate-pulse")} />
           </button>
-          {isRunning && (
-            <div className="flex items-center gap-2 ml-4">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-[9px] text-green-500 font-bold">
-                RUNNING
-              </span>
-            </div>
-          )}
+          <div className="h-4 w-[1px] bg-white/10 mx-1" />
+          <button
+            onClick={toggleTerminal}
+            className="text-slate-500 hover:text-slate-300 p-1"
+          >
+            <X size={14} />
+          </button>
         </div>
-        <button
-          onClick={toggleTerminal}
-          className="text-slate-500 hover:text-slate-300 transition-colors"
-        >
-          <X size={12} />
-        </button>
       </div>
 
-      <div className="flex-1 overflow-hidden p-2" ref={terminalRef} />
+      <div className="flex-1 overflow-hidden p-2" ref={terminalContainerRef} />
     </div>
   );
 };
+
