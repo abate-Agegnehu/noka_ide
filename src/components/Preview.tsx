@@ -17,9 +17,14 @@ export const Preview: React.FC = () => {
 
   // Auto-switch to live server when a real URL is detected
   useEffect(() => {
-    if (isRunning && previewUrl && previewUrl.startsWith('http')) {
-      setIsSimulated(false);
-    }
+    try {
+      if (isRunning && previewUrl) {
+        const u = new URL(previewUrl);
+        if (u.port !== '3000') {
+          setIsSimulated(false);
+        }
+      }
+    } catch {}
   }, [isRunning, previewUrl]);
 
   // Update previewUrl when input changes (debounced or on blur)

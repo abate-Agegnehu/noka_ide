@@ -111,10 +111,7 @@ interface IDEState {
   setRuntimeProjectPath: (p: string | null) => void;
   setRuntimeConnected: (v: boolean) => void;
   setRuntimeProcessId: (id: string | null) => void;
-  detectProjectPath: (
-    name: string,
-    options?: { promptOnFail?: boolean },
-  ) => Promise<string | null>;
+  detectProjectPath: (name: string) => Promise<string | null>;
 }
 
 const initialFiles: Record<string, FileNode> = {
@@ -458,7 +455,7 @@ export const useIDEStore = create<IDEState>()(
       setRuntimeProjectPath: (p) => set({ runtimeProjectPath: p }),
       setRuntimeConnected: (v) => set({ runtimeConnected: v }),
       setRuntimeProcessId: (id) => set({ runtimeProcessId: id }),
-      detectProjectPath: async (name, options = {}) => {
+      detectProjectPath: async (name) => {
         try {
           const res = await fetch("http://localhost:3005/api/detect-path", {
             method: "POST",
@@ -474,18 +471,6 @@ export const useIDEStore = create<IDEState>()(
           }
         } catch (e) {
           console.error("Failed to detect project path:", e);
-        }
-
-        // If detection fails, we only prompt if explicitly requested by the user via the UI button
-        if (options.promptOnFail) {
-          const p = window.prompt(
-            `Enter absolute path for project "${name}" (needed for terminal):`,
-            "C:\\path\\to\\project",
-          );
-          if (p) {
-            set({ runtimeProjectPath: p });
-            return p;
-          }
         }
         return null;
       },

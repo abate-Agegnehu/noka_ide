@@ -61,8 +61,8 @@ app.post("/api/detect-path", (req, res) => {
     }
   } catch (e) {}
 
-  // If not found, return null; do not fallback to process.cwd() as that is the IDE's own directory
-  res.json({ path: null });
+  // If not found, just return the current working directory as a fallback
+  res.json({ path: process.cwd() });
 });
 
 const server = http.createServer(app);
