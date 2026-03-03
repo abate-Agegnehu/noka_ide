@@ -1,211 +1,263 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Terminal as TerminalIcon, ChevronRight, X } from 'lucide-react';
-import { useIDEStore } from '../store/useIDEStore';
+import React, { useEffect, useRef } from "react";
+import { Terminal as XTerm } from "xterm";
+import { FitAddon } from "xterm-addon-fit";
+import { WebLinksAddon } from "xterm-addon-web-links";
+import { Terminal as TerminalIcon, X, RefreshCw } from "lucide-react";
+import { useIDEStore } from "../store/useIDEStore";
+import "xterm/css/xterm.css";
 
 export const Terminal: React.FC = () => {
-  const { 
-    terminalLogs, 
-    addTerminalLog, 
-    clearTerminalLogs, 
-    files, 
-    isTerminalOpen, 
+  const {
+    isTerminalOpen,
     toggleTerminal,
     isRunning,
-    setRunning,
-    previewUrl,
-    setPreviewUrl
+    runtimeProjectPath,
+    setRuntimeProjectPath,
+    detectProjectPath,
+    files,
   } = useIDEStore();
-  const [input, setInput] = useState('');
-  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const rootFolder = Object.values(files).find(f => f.parentId === null);
-  const promptPath = rootFolder ? rootFolder.name : 'project';
+  const terminalRef = useRef<HTMLDivElement>(null);
+  const xtermRef = useRef<XTerm | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
+  // track last seen root folder id so we can detect project changes even when
+  // the folder name stays the same (users may open multiple projects named
+  // "project" etc).
+  const prevRootIdRef = useRef<string | null>(null);
+
+  // Detect and update project path when the active root folder changes. calling
+  // `detectProjectPath` on every change keeps the runtime cwd in sync with the
+  // workspace state.
+  useEffect(() => {
+    const rootFolder = Object.values(files).find((f) => f.parentId === null);
+    const rootId = rootFolder?.id || null;
+
+    // If the root folder object changed (new project) or we have no cwd yet,
+    // probe for a path on disk.
+    if (rootFolder) {
+      if (rootId !== prevRootIdRef.current) {
+        prevRootIdRef.current = rootId;
+        // clear any stale path before attempting detection so that the effect
+        // which re‑initializes the terminal will fire properly
+        if (runtimeProjectPath) {
+          setRuntimeProjectPath(null);
+        }
+        detectProjectPath(rootFolder.name, { promptOnFail: false });
+      } else if (!runtimeProjectPath) {
+        // root didn't change but we still don't have a path (initial load)
+        detectProjectPath(rootFolder.name, { promptOnFail: false });
+      }
+    }
+  }, [files, runtimeProjectPath, detectProjectPath, setRuntimeProjectPath]);
+
+  // Restart terminal when project path changes
+  useEffect(() => {
+    if (xtermRef.current) {
+      xtermRef.current.dispose();
+      xtermRef.current = null;
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({ type: "pty-kill", id: "main-terminal" }),
+        );
+        wsRef.current.close();
+      }
+    }
+  }, [runtimeProjectPath]);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [terminalLogs]);
+    if (!isTerminalOpen || !terminalRef.current || xtermRef.current) return;
 
-  const handleCommand = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmedInput = input.trim();
-    if (!trimmedInput) return;
-    
-    const cmd = trimmedInput.toLowerCase();
-    addTerminalLog(`${promptPath} > ${trimmedInput}`);
-    
-    // Get package.json if it exists
-    const packageJsonFile = Object.values(files).find(f => f.name === 'package.json');
-    let packageJson: any = null;
-    try {
-      if (packageJsonFile?.content) {
-        packageJson = JSON.parse(packageJsonFile.content);
-      }
-    } catch (err) {
-      console.error('Failed to parse package.json:', err);
-    }
+    let isMounted = true;
+    let ws: WebSocket | null = null;
+    let term: XTerm | null = null;
 
-    // Command execution logic
-    if (cmd === 'clear' || cmd === 'cls') {
-      clearTerminalLogs();
-    } else if (cmd === 'help' || cmd === 'h') {
-      addTerminalLog('Available commands:');
-      addTerminalLog('  help, h        Show this help message');
-      addTerminalLog('  clear, cls     Clear terminal output');
-      addTerminalLog('  ls, dir        List files in current directory');
-      addTerminalLog('  npm run <name> Run a script from package.json');
-      addTerminalLog('  npm start      Run the project');
-      addTerminalLog('  npm stop       Stop the running project');
-      
-      if (isRunning) {
-        addTerminalLog('');
-        addTerminalLog('Server-specific shortcuts:');
-        addTerminalLog('  r + enter      Restart the server');
-        addTerminalLog('  u + enter      Show server URL');
-        addTerminalLog('  q + enter      Stop the server');
-      }
-      
-      addTerminalLog('  date           Show current date and time');
-      addTerminalLog('  echo <text>    Print text to terminal');
-      addTerminalLog('  pwd            Show current working directory');
-    } else if (isRunning && (cmd === 'r' || cmd === 'u' || cmd === 'q')) {
-      if (cmd === 'r') {
-        addTerminalLog('Restarting server...');
-        setTimeout(() => {
-          addTerminalLog('Server restarted successfully.');
-        }, 500);
-      } else if (cmd === 'u') {
-        addTerminalLog(`  ➜  Local:   ${previewUrl}/ (Simulated)`);
-      } else if (cmd === 'q') {
-        setRunning(false);
-        addTerminalLog('Stopping development server...');
-        addTerminalLog('Server stopped.');
-      }
-    } else if (cmd === 'ls' || cmd === 'dir') {
-      const allFilesList = Object.values(files);
-      const currentFiles = allFilesList.filter(f => f.parentId === null || f.parentId === 'root');
-      
-      if (cmd === 'dir') {
-        addTerminalLog(` Directory of ${promptPath}:`);
-        addTerminalLog('');
-        currentFiles.forEach(f => {
-          const type = f.type === 'folder' ? '<DIR>' : '     ';
-          addTerminalLog(`${new Date().toLocaleDateString()}  ${new Date().toLocaleTimeString()}    ${type}    ${f.name}`);
-        });
-      } else {
-        const fileNames = currentFiles.map(f => f.name).join('  ');
-        addTerminalLog(fileNames || 'No files found');
-      }
-    } else if (cmd === 'pwd') {
-      addTerminalLog(`/${promptPath}`);
-    } else if (cmd.startsWith('echo ')) {
-      addTerminalLog(trimmedInput.substring(5));
-    } else if (cmd.startsWith('npm install') || cmd.startsWith('npm i')) {
-      const pkgs = cmd.split(' ').slice(2).join(' ') || 'dependencies';
-      addTerminalLog(`Installing ${pkgs}...`);
-      setTimeout(() => {
-        addTerminalLog('added 42 packages, and audited 43 packages in 2s');
-        addTerminalLog('found 0 vulnerabilities');
-      }, 1500);
-    } else if (cmd.startsWith('npm run ') || cmd === 'npm start') {
-      if (isRunning) {
-        addTerminalLog('Project is already running!');
-      } else {
-        let scriptName = cmd === 'npm start' ? 'start' : cmd.replace('npm run ', '');
-        const availableScripts = packageJson?.scripts || {};
-        
-        if (cmd !== 'npm start' && !availableScripts[scriptName]) {
-          addTerminalLog(`npm ERR! missing script: ${scriptName}`);
-          setInput('');
-          return;
+    const initializeTerminal = async () => {
+      // Find the root folder name from the sidebar files
+      const rootFolder = Object.values(files).find((f) => f.parentId === null);
+      let cwd = runtimeProjectPath || "";
+
+      // If we have a root folder but no path yet, or if the root folder changed,
+      // try to detect the path automatically.  The store will prompt the user
+      // for a path if the backend cannot determine one; when detection returns
+      // nothing we also fall back to a relative path so that projects located
+      // inside the same directory tree as the server still work.
+      if (rootFolder) {
+        try {
+          const detectedPath = await detectProjectPath(rootFolder.name, {
+            promptOnFail: false,
+          });
+          if (detectedPath) {
+            cwd = detectedPath;
+          }
+        } catch (e) {
+          console.warn("Backend offline or path detection failed");
         }
 
-        setRunning(true);
-        const framework = packageJson?.dependencies?.next ? 'Next.js' : 
-                         packageJson?.dependencies?.vite ? 'Vite' : 
-                         packageJson?.dependencies?.react ? 'React' : 'Node.js';
-        
-        addTerminalLog(`Starting ${framework} development server...`);
-        addTerminalLog(`> ${availableScripts[scriptName] || (cmd === 'npm start' ? 'node index.js' : 'vite')}`);
-        
-        setTimeout(() => {
-          let url = 'http://localhost:3000';
-          if (framework === 'Vite') {
-            url = 'http://localhost:5173';
-            addTerminalLog('  VITE v5.0.0  ready in 452 ms');
-            addTerminalLog(`  ➜  Local:   ${url}/ (Simulated)`);
-          } else if (framework === 'Next.js') {
-            url = 'http://localhost:3000';
-            addTerminalLog(`  ready - started server on 0.0.0.0:3000, url: ${url} (Simulated)`);
-          } else {
-            url = 'http://localhost:3000';
-            addTerminalLog('  Server started successfully on port 3000 (Simulated)');
-            addTerminalLog(`  ➜  Local:   ${url}/ (Simulated)`);
-          }
-          // Do not set previewUrl for simulated runs to avoid loading NovaIDE (port 3000)
-          addTerminalLog('  ➜  Network: use --host to expose');
-          addTerminalLog('  ➜  Note: This is a simulated environment. The preview is only available in the Preview tab.');
-          addTerminalLog('  ➜  press h + enter to show help');
-        }, 800);
+        if (!cwd) {
+          // relative fallback
+          cwd = rootFolder.name;
+        }
       }
-    } else if (cmd === 'npm stop') {
-      if (!isRunning) {
-        addTerminalLog('Project is not running.');
-      } else {
-        setRunning(false);
-        addTerminalLog('Stopping development server...');
-        addTerminalLog('Server stopped.');
+
+      if (!isMounted || !terminalRef.current) return;
+
+      // Initialize xterm
+      term = new XTerm({
+        theme: {
+          background: "#0f172a",
+          foreground: "#f8fafc",
+          cursor: "#38bdf8",
+          selectionBackground: "rgba(56, 189, 248, 0.3)",
+        },
+        fontSize: 12,
+        fontFamily: "JetBrains Mono, monospace",
+        cursorBlink: true,
+        allowProposedApi: true,
+      });
+
+      const fitAddon = new FitAddon();
+      term.loadAddon(fitAddon);
+      term.loadAddon(new WebLinksAddon());
+
+      term.open(terminalRef.current!);
+      fitAddon.fit();
+      term.focus();
+
+      xtermRef.current = term;
+      fitAddonRef.current = fitAddon;
+
+      // Connect to WebSocket
+      ws = new WebSocket(`ws://${window.location.hostname}:3005`);
+      wsRef.current = ws;
+
+      const terminalId = "main-terminal";
+
+      ws.onopen = () => {
+        if (!ws) return;
+        // Start PTY session
+        ws.send(
+          JSON.stringify({
+            type: "pty-start",
+            id: terminalId,
+            cwd: cwd || "",
+            cols: term?.cols,
+            rows: term?.rows,
+          }),
+        );
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "pty-output" && msg.id === terminalId) {
+          term?.write(msg.data);
+        } else if (msg.type === "error") {
+          term?.write(
+            "\r\n\x1b[31m[Nova Error]: " + msg.message + "\x1b[0m\r\n",
+          );
+        }
+      };
+
+      ws.onerror = () => {
+        term?.write(
+          '\r\n\x1b[31m[Nova Error]: Failed to connect to backend server (port 3005). Please ensure the backend is running with "npm run server".\x1b[0m\r\n',
+        );
+      };
+
+      term.onData((data) => {
+        if (ws?.readyState === WebSocket.OPEN) {
+          ws.send(
+            JSON.stringify({
+              type: "pty-input",
+              id: terminalId,
+              data,
+            }),
+          );
+        }
+      });
+
+      term.onResize(({ cols, rows }) => {
+        if (ws?.readyState === WebSocket.OPEN) {
+          ws.send(
+            JSON.stringify({
+              type: "pty-resize",
+              id: terminalId,
+              cols,
+              rows,
+            }),
+          );
+        }
+      });
+    };
+
+    initializeTerminal();
+
+    const handleResize = () => {
+      if (fitAddonRef.current) fitAddonRef.current.fit();
+    };
+
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener("resize", handleResize);
+      if (term) term.dispose();
+      xtermRef.current = null;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "pty-kill", id: "main-terminal" }));
+        ws.close();
       }
-    } else {
-      addTerminalLog(`Command not found: ${cmd}`);
-    }
-    
-    setInput('');
-  };
+    };
+  }, [isTerminalOpen, runtimeProjectPath, files, detectProjectPath]);
 
   if (!isTerminalOpen) return null;
 
   return (
-    <div className="h-64 bg-slate-950 border-t border-white/5 flex flex-col font-mono text-xs">
+    <div className="h-64 bg-[#0f172a] border-t border-white/5 flex flex-col font-mono text-xs">
       <div className="flex items-center justify-between px-4 py-1.5 bg-slate-900/50 border-b border-white/5">
         <div className="flex items-center gap-2 text-slate-400">
           <TerminalIcon size={12} />
-          <span className="font-semibold uppercase tracking-wider text-[10px]">Terminal</span>
+          <span className="font-semibold uppercase tracking-wider text-[10px]">
+            System Terminal
+          </span>
+          <div className="h-3 w-[1px] bg-white/10 mx-1" />
+          <span
+            className="text-[10px] text-slate-500 font-mono truncate max-w-[300px]"
+            title={runtimeProjectPath || "Default Path"}
+          >
+            {runtimeProjectPath || "IDE Path"}
+          </span>
+          <button
+            onClick={() => {
+              const rootFolder = Object.values(files).find(
+                (f) => f.parentId === null,
+              );
+              if (rootFolder)
+                detectProjectPath(rootFolder.name, { promptOnFail: true });
+            }}
+            className="p-1 hover:bg-white/10 rounded text-slate-500 hover:text-blue-400 transition-colors ml-1"
+            title="Sync with Active Project"
+          >
+            <RefreshCw size={10} />
+          </button>
           {isRunning && (
             <div className="flex items-center gap-2 ml-4">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-[9px] text-green-500 font-bold">RUNNING</span>
+              <span className="text-[9px] text-green-500 font-bold">
+                RUNNING
+              </span>
             </div>
           )}
         </div>
-        <button 
+        <button
           onClick={toggleTerminal}
           className="text-slate-500 hover:text-slate-300 transition-colors"
         >
           <X size={12} />
         </button>
       </div>
-      
-      <div 
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 space-y-1 text-slate-300"
-      >
-        {terminalLogs.map((log, i) => (
-          <div key={i} className={log.includes(' > ') ? "text-blue-400" : ""}>{log}</div>
-        ))}
-        <form onSubmit={handleCommand} className="flex items-center gap-1 mt-2">
-          <span className="text-blue-400 font-bold whitespace-nowrap">{promptPath}</span>
-          <ChevronRight size={14} className="text-slate-500" />
-          <input
-            autoFocus
-            className="flex-1 bg-transparent outline-none text-slate-200"
-            value={input}
-            placeholder={isRunning ? "Server is running... type 'npm stop' to end" : "Type a command..."}
-            onChange={(e) => setInput(e.target.value)}
-          />
-        </form>
-      </div>
+
+      <div className="flex-1 overflow-hidden p-2" ref={terminalRef} />
     </div>
   );
 };

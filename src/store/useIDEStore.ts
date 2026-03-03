@@ -1,7 +1,7 @@
-import { create } from 'zustand';
-import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
-import { v4 as uuidv4 } from 'uuid';
-import { get, set, del } from 'idb-keyval';
+import { create } from "zustand";
+import { persist, createJSONStorage, StateStorage } from "zustand/middleware";
+import { v4 as uuidv4 } from "uuid";
+import { get, set, del } from "idb-keyval";
 
 // Custom storage for Zustand using IndexedDB
 const idbStorage: StateStorage = {
@@ -17,7 +17,7 @@ const idbStorage: StateStorage = {
   },
 };
 
-export type FileType = 'file' | 'folder';
+export type FileType = "file" | "folder";
 
 export interface FileNode {
   id: string;
@@ -29,7 +29,7 @@ export interface FileNode {
   isOpen?: boolean;
 }
 
-export type ActivePanel = 'explorer' | 'extensions';
+export type ActivePanel = "explorer" | "extensions";
 
 export interface ExtensionItem {
   id: string;
@@ -55,21 +55,25 @@ interface IDEState {
   terminalLogs: string[];
   isRunning: boolean;
   previewUrl: string;
-  terminals: { id: string, name: string, initialCommand?: string }[];
+  terminals: { id: string; name: string; initialCommand?: string }[];
   activeTerminalId: string | null;
   activePanel: ActivePanel;
   installedExtensions: ExtensionItem[];
   marketplaceResults: ExtensionItem[];
   isFetchingMarketplace: boolean;
   formatOnSave: boolean;
-  iconTheme: 'emoji' | 'material';
+  iconTheme: "emoji" | "material";
   runtimeProjectPath?: string | null;
   runtimeProcessId?: string | null;
   runtimeConnected: boolean;
-  
+
   // Actions
   setPreviewUrl: (url: string) => void;
-  createFile: (name: string, parentId: string | null, content?: string) => string;
+  createFile: (
+    name: string,
+    parentId: string | null,
+    content?: string,
+  ) => string;
   createFolder: (name: string, parentId: string | null) => string;
   deleteNode: (id: string) => void;
   renameNode: (id: string, newName: string) => void;
@@ -89,34 +93,41 @@ interface IDEState {
   setFiles: (files: Record<string, FileNode>) => void;
   toggleFolderOpen: (id: string) => void;
   importFiles: (newFiles: Record<string, FileNode>) => void;
-  importSingleFile: (name: string, content: string, parentId: string | null) => string;
+  importSingleFile: (
+    name: string,
+    content: string,
+    parentId: string | null,
+  ) => string;
   setActivePanel: (panel: ActivePanel) => void;
   searchMarketplace: (query: string) => Promise<void>;
-  installExtension: (ext: Omit<ExtensionItem, 'installedAt' | 'enabled'>) => void;
+  installExtension: (
+    ext: Omit<ExtensionItem, "installedAt" | "enabled">,
+  ) => void;
   uninstallExtension: (extId: string) => void;
   toggleExtensionEnabled: (extId: string) => void;
   downloadExtension: (extId: string) => Promise<void>;
   setFormatOnSave: (v: boolean) => void;
-  setIconTheme: (v: 'emoji' | 'material') => void;
+  setIconTheme: (v: "emoji" | "material") => void;
   setRuntimeProjectPath: (p: string | null) => void;
   setRuntimeConnected: (v: boolean) => void;
   setRuntimeProcessId: (id: string | null) => void;
+  detectProjectPath: (name: string) => Promise<string | null>;
 }
 
 const initialFiles: Record<string, FileNode> = {
-  'root': {
-    id: 'root',
-    name: 'project',
-    type: 'folder',
+  root: {
+    id: "root",
+    name: "project",
+    type: "folder",
     parentId: null,
     isOpen: true,
   },
-  'index-html': {
-    id: 'index-html',
-    name: 'index.html',
-    type: 'file',
-    parentId: 'root',
-    language: 'html',
+  "index-html": {
+    id: "index-html",
+    name: "index.html",
+    type: "file",
+    parentId: "root",
+    language: "html",
     content: `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -155,12 +166,12 @@ const initialFiles: Record<string, FileNode> = {
 </body>
 </html>`,
   },
-  'script-js': {
-    id: 'script-js',
-    name: 'script.js',
-    type: 'file',
-    parentId: 'root',
-    language: 'javascript',
+  "script-js": {
+    id: "script-js",
+    name: "script.js",
+    type: "file",
+    parentId: "root",
+    language: "javascript",
     content: `console.log("Hello from Nova IDE!");
 
 const app = document.getElementById('app');
@@ -169,66 +180,68 @@ app.innerHTML = '<p>Current time: ' + new Date().toLocaleTimeString() + '</p>';
 setInterval(() => {
     app.innerHTML = '<p>Current time: ' + new Date().toLocaleTimeString() + '</p>';
 }, 1000);`,
-  }
+  },
 };
 
 export const useIDEStore = create<IDEState>()(
   persist(
     (set, get) => ({
       files: initialFiles,
-      activeFileId: 'index-html',
-      openFileIds: ['index-html'],
+      activeFileId: "index-html",
+      openFileIds: ["index-html"],
       sidebarWidth: 260,
       previewWidth: 400,
       isChatOpen: false,
       isTerminalOpen: true,
       terminalLogs: [
-        'Nova IDE v1.0.0 initialized.',
+        "Nova IDE v1.0.0 initialized.",
         'Type "help" to see available commands.',
       ],
       isRunning: false,
-      previewUrl: '',
+      previewUrl: "",
       terminals: [],
       activeTerminalId: null,
-      activePanel: 'explorer',
+      activePanel: "explorer",
       installedExtensions: [],
       marketplaceResults: [],
       isFetchingMarketplace: false,
       formatOnSave: false,
-      iconTheme: 'emoji',
+      iconTheme: "emoji",
       runtimeProjectPath: null,
       runtimeProcessId: null,
       runtimeConnected: false,
 
       setPreviewUrl: (url) => set({ previewUrl: url }),
-      createFile: (name, parentId, content = '') => {
+      createFile: (name, parentId, content = "") => {
         const id = uuidv4();
-        const extension = name.split('.').pop() || 'text';
+        const extension = name.split(".").pop() || "text";
         const languageMap: Record<string, string> = {
-          'js': 'javascript',
-          'ts': 'typescript',
-          'tsx': 'typescript',
-          'jsx': 'javascript',
-          'html': 'html',
-          'css': 'css',
-          'json': 'json',
-          'py': 'python',
-          'md': 'markdown'
+          js: "javascript",
+          ts: "typescript",
+          tsx: "typescript",
+          jsx: "javascript",
+          html: "html",
+          css: "css",
+          json: "json",
+          py: "python",
+          md: "markdown",
         };
-        
+
         const newNode: FileNode = {
           id,
           name,
-          type: 'file',
+          type: "file",
           parentId,
           content,
-          language: languageMap[extension] || 'text'
+          language: languageMap[extension] || "text",
         };
 
         set((state) => ({
           files: { ...state.files, [id]: newNode },
           activeFileId: id,
-          openFileIds: state.openFileIds.includes(id) ? state.openFileIds : [...state.openFileIds, id]
+          openFileIds: state.openFileIds.includes(id)
+            ? state.openFileIds
+            : [...state.openFileIds, id],
         }));
         return id;
       },
@@ -238,12 +251,12 @@ export const useIDEStore = create<IDEState>()(
         const newNode: FileNode = {
           id,
           name,
-          type: 'folder',
+          type: "folder",
           parentId,
-          isOpen: true
+          isOpen: true,
         };
         set((state) => ({
-          files: { ...state.files, [id]: newNode }
+          files: { ...state.files, [id]: newNode },
         }));
         return id;
       },
@@ -252,27 +265,32 @@ export const useIDEStore = create<IDEState>()(
         set((state) => {
           const newFiles = { ...state.files };
           const deletedIds: string[] = [];
-          
+
           const deleteRecursive = (nodeId: string) => {
             deletedIds.push(nodeId);
-            Object.values(state.files).forEach(f => {
+            Object.values(state.files).forEach((f) => {
               if (f.parentId === nodeId) deleteRecursive(f.id);
             });
             delete newFiles[nodeId];
           };
-          
+
           deleteRecursive(id);
-          
-          const newOpenFileIds = state.openFileIds.filter(fid => !deletedIds.includes(fid));
+
+          const newOpenFileIds = state.openFileIds.filter(
+            (fid) => !deletedIds.includes(fid),
+          );
           let newActiveId = state.activeFileId;
           if (state.activeFileId && deletedIds.includes(state.activeFileId)) {
-            newActiveId = newOpenFileIds.length > 0 ? newOpenFileIds[newOpenFileIds.length - 1] : null;
+            newActiveId =
+              newOpenFileIds.length > 0
+                ? newOpenFileIds[newOpenFileIds.length - 1]
+                : null;
           }
-          
+
           return {
             files: newFiles,
             openFileIds: newOpenFileIds,
-            activeFileId: newActiveId
+            activeFileId: newActiveId,
           };
         });
       },
@@ -281,8 +299,8 @@ export const useIDEStore = create<IDEState>()(
         set((state) => ({
           files: {
             ...state.files,
-            [id]: { ...state.files[id], name: newName }
-          }
+            [id]: { ...state.files[id], name: newName },
+          },
         }));
       },
 
@@ -293,20 +311,23 @@ export const useIDEStore = create<IDEState>()(
         }
         set((state) => ({
           activeFileId: id,
-          openFileIds: state.openFileIds.includes(id) ? state.openFileIds : [...state.openFileIds, id]
+          openFileIds: state.openFileIds.includes(id)
+            ? state.openFileIds
+            : [...state.openFileIds, id],
         }));
       },
 
       closeFile: (id) => {
         set((state) => {
-          const newOpenIds = state.openFileIds.filter(fid => fid !== id);
+          const newOpenIds = state.openFileIds.filter((fid) => fid !== id);
           let newActiveId = state.activeFileId;
           if (state.activeFileId === id) {
-            newActiveId = newOpenIds.length > 0 ? newOpenIds[newOpenIds.length - 1] : null;
+            newActiveId =
+              newOpenIds.length > 0 ? newOpenIds[newOpenIds.length - 1] : null;
           }
           return {
             openFileIds: newOpenIds,
-            activeFileId: newActiveId
+            activeFileId: newActiveId,
           };
         });
       },
@@ -315,124 +336,189 @@ export const useIDEStore = create<IDEState>()(
         set((state) => ({
           files: {
             ...state.files,
-            [id]: { ...state.files[id], content }
-          }
+            [id]: { ...state.files[id], content },
+          },
         }));
       },
 
       setSidebarWidth: (width) => set({ sidebarWidth: width }),
       setPreviewWidth: (width) => set({ previewWidth: width }),
       toggleChat: () => set((state) => ({ isChatOpen: !state.isChatOpen })),
-      toggleTerminal: () => set((state) => ({ isTerminalOpen: !state.isTerminalOpen })),
-      addTerminalLog: (log) => set((state) => ({ 
-        terminalLogs: [...state.terminalLogs, log] 
-      })),
+      toggleTerminal: () =>
+        set((state) => ({ isTerminalOpen: !state.isTerminalOpen })),
+      addTerminalLog: (log) =>
+        set((state) => ({
+          terminalLogs: [...state.terminalLogs, log],
+        })),
       clearTerminalLogs: () => set({ terminalLogs: [] }),
       setRunning: (isRunning) => set({ isRunning }),
       addTerminal: (name, initialCommand) => {
         const id = uuidv4();
         const terminalName = name || `Terminal ${get().terminals.length + 1}`;
         set((state) => ({
-          terminals: [...state.terminals, { id, name: terminalName, initialCommand }],
+          terminals: [
+            ...state.terminals,
+            { id, name: terminalName, initialCommand },
+          ],
           activeTerminalId: id,
-          isTerminalOpen: true
+          isTerminalOpen: true,
         }));
         return id;
       },
-      removeTerminal: (id) => set((state) => {
-        const newTerminals = state.terminals.filter(t => t.id !== id);
-        let newActiveId = state.activeTerminalId;
-        if (state.activeTerminalId === id) {
-          newActiveId = newTerminals.length > 0 ? newTerminals[newTerminals.length - 1].id : null;
-        }
-        return {
-          terminals: newTerminals,
-          activeTerminalId: newActiveId
-        };
-      }),
+      removeTerminal: (id) =>
+        set((state) => {
+          const newTerminals = state.terminals.filter((t) => t.id !== id);
+          let newActiveId = state.activeTerminalId;
+          if (state.activeTerminalId === id) {
+            newActiveId =
+              newTerminals.length > 0
+                ? newTerminals[newTerminals.length - 1].id
+                : null;
+          }
+          return {
+            terminals: newTerminals,
+            activeTerminalId: newActiveId,
+          };
+        }),
       setActiveTerminal: (id) => set({ activeTerminalId: id }),
-      setFiles: (files) => set((state) => {
-        const fileIds = Object.keys(files);
-        const newOpenFileIds = state.openFileIds.filter(id => fileIds.includes(id));
-        let newActiveId = state.activeFileId;
-        if (state.activeFileId && !fileIds.includes(state.activeFileId)) {
-          newActiveId = newOpenFileIds.length > 0 ? newOpenFileIds[0] : null;
-        }
-        return {
-          files,
-          openFileIds: newOpenFileIds,
-          activeFileId: newActiveId
+      setFiles: (files) =>
+        set((state) => {
+          const fileIds = Object.keys(files);
+          const newOpenFileIds = state.openFileIds.filter((id) =>
+            fileIds.includes(id),
+          );
+          let newActiveId = state.activeFileId;
+          if (state.activeFileId && !fileIds.includes(state.activeFileId)) {
+            newActiveId = newOpenFileIds.length > 0 ? newOpenFileIds[0] : null;
+          }
+          return {
+            files,
+            openFileIds: newOpenFileIds,
+            activeFileId: newActiveId,
+          };
+        }),
+      toggleFolderOpen: (id) =>
+        set((state) => ({
+          files: {
+            ...state.files,
+            [id]: { ...state.files[id], isOpen: !state.files[id].isOpen },
+          },
+        })),
+      importFiles: (newFiles) =>
+        set((state) => {
+          const fileIds = Object.keys(newFiles);
+          const indexHtml = fileIds.find(
+            (id) => newFiles[id].name === "index.html",
+          );
+          return {
+            files: newFiles,
+            openFileIds: indexHtml ? [indexHtml] : [],
+            activeFileId: indexHtml || fileIds[0] || null,
+          };
+        }),
+      importSingleFile: (name, content, parentId) => {
+        const id = uuidv4();
+        const extension = name.split(".").pop() || "text";
+        const languageMap: Record<string, string> = {
+          js: "javascript",
+          ts: "typescript",
+          tsx: "typescript",
+          jsx: "javascript",
+          html: "html",
+          css: "css",
+          json: "json",
+          py: "python",
+          md: "markdown",
         };
-      }),
-      toggleFolderOpen: (id) => set((state) => ({
-        files: {
-          ...state.files,
-          [id]: { ...state.files[id], isOpen: !state.files[id].isOpen }
-        }
-      })),
-      importFiles: (newFiles) => set((state) => {
-         const fileIds = Object.keys(newFiles);
-         const indexHtml = fileIds.find(id => newFiles[id].name === 'index.html');
-         return {
-           files: newFiles,
-           openFileIds: indexHtml ? [indexHtml] : [],
-           activeFileId: indexHtml || fileIds[0] || null
-         };
-       }),
-       importSingleFile: (name, content, parentId) => {
-         const id = uuidv4();
-         const extension = name.split('.').pop() || 'text';
-         const languageMap: Record<string, string> = {
-           'js': 'javascript', 'ts': 'typescript', 'tsx': 'typescript',
-           'jsx': 'javascript', 'html': 'html', 'css': 'css',
-           'json': 'json', 'py': 'python', 'md': 'markdown'
-         };
-         
-         const newNode: FileNode = {
-           id,
-           name,
-           type: 'file',
-           parentId,
-           content,
-           language: languageMap[extension] || 'text'
-         };
 
-         set((state) => ({
-           files: { ...state.files, [id]: newNode },
-           activeFileId: id,
-           openFileIds: state.openFileIds.includes(id) ? state.openFileIds : [...state.openFileIds, id]
-         }));
-         return id;
-       },
+        const newNode: FileNode = {
+          id,
+          name,
+          type: "file",
+          parentId,
+          content,
+          language: languageMap[extension] || "text",
+        };
+
+        set((state) => ({
+          files: { ...state.files, [id]: newNode },
+          activeFileId: id,
+          openFileIds: state.openFileIds.includes(id)
+            ? state.openFileIds
+            : [...state.openFileIds, id],
+        }));
+        return id;
+      },
       setActivePanel: (panel) => set({ activePanel: panel }),
       setFormatOnSave: (v) => set({ formatOnSave: v }),
       setIconTheme: (v) => set({ iconTheme: v }),
       setRuntimeProjectPath: (p) => set({ runtimeProjectPath: p }),
       setRuntimeConnected: (v) => set({ runtimeConnected: v }),
       setRuntimeProcessId: (id) => set({ runtimeProcessId: id }),
+      detectProjectPath: async (name) => {
+        try {
+          const res = await fetch("http://localhost:3005/api/detect-path", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.path) {
+              set({ runtimeProjectPath: data.path });
+              return data.path;
+            }
+          }
+        } catch (e) {
+          console.error("Failed to detect project path:", e);
+        }
+        return null;
+      },
       searchMarketplace: async (query: string) => {
         set({ isFetchingMarketplace: true });
         try {
-          const q = query && query.trim().length > 0 ? query.trim() : 'popular';
+          const q = query && query.trim().length > 0 ? query.trim() : "popular";
           async function searchOnce(term: string): Promise<ExtensionItem[]> {
-            const res = await fetch(`https://open-vsx.org/api/-/search?size=24&sortBy=downloadCount&query=${encodeURIComponent(term)}`);
+            const res = await fetch(
+              `https://open-vsx.org/api/-/search?size=24&sortBy=downloadCount&query=${encodeURIComponent(term)}`,
+            );
             if (!res.ok) return [];
             const items: any[] = await res.json();
             return (Array.isArray(items) ? items : []).map((it) => {
-              const publisher = safeString(it.namespace) || safeString(it.publisher) || 'unknown';
-              const name = safeString(it.name) || 'unknown';
+              const publisher =
+                safeString(it.namespace) ||
+                safeString(it.publisher) ||
+                "unknown";
+              const name = safeString(it.name) || "unknown";
               const id = `${publisher}.${name}`;
-              const displayName = safeString(it.displayName) || safeString(it.title) || name;
+              const displayName =
+                safeString(it.displayName) || safeString(it.title) || name;
               const description = safeString(it.description);
-              const version = safeString(it.version) || safeString(it.latestVersion);
+              const version =
+                safeString(it.version) || safeString(it.latestVersion);
               const iconUrl = safeString(it.icon) || safeString(it.iconUrl);
-              return { id, name, displayName, publisher, version, description, iconUrl, installedAt: 0, enabled: false };
+              return {
+                id,
+                name,
+                displayName,
+                publisher,
+                version,
+                description,
+                iconUrl,
+                installedAt: 0,
+                enabled: false,
+              };
             });
           }
           let results: ExtensionItem[] = await searchOnce(q);
           if (results.length === 0) {
-            if (!q.includes(' ')) {
-              const fallbacks = [`${q} formatter`, `${q} format`, `format`, `formatter`];
+            if (!q.includes(" ")) {
+              const fallbacks = [
+                `${q} formatter`,
+                `${q} format`,
+                `format`,
+                `formatter`,
+              ];
               for (const f of fallbacks) {
                 const more = await searchOnce(f);
                 if (more.length > 0) {
@@ -448,36 +534,44 @@ export const useIDEStore = create<IDEState>()(
               } catch {}
             }
             if (results.length === 0 && /prettier/i.test(q)) {
-              results = [{
-                id: 'esbenp.prettier-vscode',
-                name: 'prettier-vscode',
-                displayName: 'Prettier - Code formatter',
-                publisher: 'esbenp',
-                version: undefined,
-                description: 'Code formatter using Prettier',
-                iconUrl: 'https://raw.githubusercontent.com/prettier/prettier-logo/master/images/prettier-icon.png',
-                vsixUrl: undefined,
-                installedAt: 0,
-                enabled: false
-              }];
+              results = [
+                {
+                  id: "esbenp.prettier-vscode",
+                  name: "prettier-vscode",
+                  displayName: "Prettier - Code formatter",
+                  publisher: "esbenp",
+                  version: undefined,
+                  description: "Code formatter using Prettier",
+                  iconUrl:
+                    "https://raw.githubusercontent.com/prettier/prettier-logo/master/images/prettier-icon.png",
+                  vsixUrl: undefined,
+                  installedAt: 0,
+                  enabled: false,
+                },
+              ];
             }
           }
           const dedup: Record<string, ExtensionItem> = {};
-          results.forEach(r => { dedup[r.id] = r; });
-          set({ marketplaceResults: Object.values(dedup), isFetchingMarketplace: false });
+          results.forEach((r) => {
+            dedup[r.id] = r;
+          });
+          set({
+            marketplaceResults: Object.values(dedup),
+            isFetchingMarketplace: false,
+          });
         } catch {
           set({ marketplaceResults: [], isFetchingMarketplace: false });
         }
       },
       installExtension: (ext) => {
         set((state) => {
-          if (state.installedExtensions.find(e => e.id === ext.id)) {
+          if (state.installedExtensions.find((e) => e.id === ext.id)) {
             return {};
           }
           const item: ExtensionItem = {
             ...ext,
             installedAt: Date.now(),
-            enabled: true
+            enabled: true,
           };
           const installedExtensions = [...state.installedExtensions, item];
           const iconTheme = computeIconTheme(installedExtensions);
@@ -486,21 +580,27 @@ export const useIDEStore = create<IDEState>()(
       },
       uninstallExtension: (extId) => {
         set((state) => {
-          const installedExtensions = state.installedExtensions.filter(e => e.id !== extId);
+          const installedExtensions = state.installedExtensions.filter(
+            (e) => e.id !== extId,
+          );
           const iconTheme = computeIconTheme(installedExtensions);
           return { installedExtensions, iconTheme };
         });
       },
       toggleExtensionEnabled: (extId) => {
         set((state) => {
-          const installedExtensions = state.installedExtensions.map(e => e.id === extId ? { ...e, enabled: !e.enabled } : e);
+          const installedExtensions = state.installedExtensions.map((e) =>
+            e.id === extId ? { ...e, enabled: !e.enabled } : e,
+          );
           const iconTheme = computeIconTheme(installedExtensions);
           return { installedExtensions, iconTheme };
         });
       },
       downloadExtension: async (extId) => {
         const state = get();
-        const ext = state.installedExtensions.find(e => e.id === extId) || state.marketplaceResults.find(e => e.id === extId);
+        const ext =
+          state.installedExtensions.find((e) => e.id === extId) ||
+          state.marketplaceResults.find((e) => e.id === extId);
         if (!ext) return;
         try {
           let url = ext.vsixUrl;
@@ -508,16 +608,25 @@ export const useIDEStore = create<IDEState>()(
             url = await resolveVsixUrl(ext.publisher, ext.name);
           }
           if (!url) {
-            const ms = await resolveVsixFromMarketplace(ext.publisher, ext.name);
+            const ms = await resolveVsixFromMarketplace(
+              ext.publisher,
+              ext.name,
+            );
             if (ms) url = ms;
           }
-          if (!url && ext.id === 'esbenp.prettier-vscode') {
+          if (!url && ext.id === "esbenp.prettier-vscode") {
             try {
-              const r = await fetch('https://api.github.com/repos/prettier/prettier-vscode/releases/latest');
+              const r = await fetch(
+                "https://api.github.com/repos/prettier/prettier-vscode/releases/latest",
+              );
               if (r.ok) {
                 const data = await r.json();
                 const assets: any[] = data?.assets || [];
-                const vsix = assets.find(a => typeof a?.browser_download_url === 'string' && a.browser_download_url.endsWith('.vsix'));
+                const vsix = assets.find(
+                  (a) =>
+                    typeof a?.browser_download_url === "string" &&
+                    a.browser_download_url.endsWith(".vsix"),
+                );
                 if (vsix?.browser_download_url) url = vsix.browser_download_url;
               }
             } catch {}
@@ -532,9 +641,9 @@ export const useIDEStore = create<IDEState>()(
             return;
           }
           const blob = await res.blob();
-          const a = document.createElement('a');
+          const a = document.createElement("a");
           const objectUrl = URL.createObjectURL(blob);
-          const fileName = `${ext.publisher}.${ext.name}-${ext.version || 'latest'}.vsix`;
+          const fileName = `${ext.publisher}.${ext.name}-${ext.version || "latest"}.vsix`;
           a.href = objectUrl;
           a.download = fileName;
           document.body.appendChild(a);
@@ -545,42 +654,49 @@ export const useIDEStore = create<IDEState>()(
         } catch {
           state.addTerminalLog?.(`Download error for ${ext.id}`);
         }
-      }
-     }),
+      },
+    }),
     {
-      name: 'nova-ide-storage',
+      name: "nova-ide-storage",
       storage: createJSONStorage(() => idbStorage),
-    }
-  )
+    },
+  ),
 );
 
 function safeString(v: unknown): string | undefined {
-  return typeof v === 'string' ? v : undefined;
+  return typeof v === "string" ? v : undefined;
 }
 
-function computeIconTheme(installed: ExtensionItem[]): 'emoji' | 'material' {
-  const hasMaterial = installed.some(e => {
-    const id = (e.id || '').toLowerCase();
-    const name = (e.name || '').toLowerCase();
-    const dn = (e.displayName || '').toLowerCase();
-    const pub = (e.publisher || '').toLowerCase();
-    return e.enabled && (
-      id.includes('material-icon-theme') ||
-      dn.includes('material icon theme') ||
-      (pub === 'pkief' && (name.includes('material') || dn.includes('material')))
+function computeIconTheme(installed: ExtensionItem[]): "emoji" | "material" {
+  const hasMaterial = installed.some((e) => {
+    const id = (e.id || "").toLowerCase();
+    const name = (e.name || "").toLowerCase();
+    const dn = (e.displayName || "").toLowerCase();
+    const pub = (e.publisher || "").toLowerCase();
+    return (
+      e.enabled &&
+      (id.includes("material-icon-theme") ||
+        dn.includes("material icon theme") ||
+        (pub === "pkief" &&
+          (name.includes("material") || dn.includes("material"))))
     );
   });
-  return hasMaterial ? 'material' : 'emoji';
+  return hasMaterial ? "material" : "emoji";
 }
 
-async function resolveVsixUrl(publisher: string, name: string): Promise<string | undefined> {
+async function resolveVsixUrl(
+  publisher: string,
+  name: string,
+): Promise<string | undefined> {
   try {
-    const res = await fetch(`https://open-vsx.org/api/${encodeURIComponent(publisher)}/${encodeURIComponent(name)}/latest`);
+    const res = await fetch(
+      `https://open-vsx.org/api/${encodeURIComponent(publisher)}/${encodeURIComponent(name)}/latest`,
+    );
     if (!res.ok) return undefined;
     const data = await res.json();
     const files = data?.files || data?.assets || {};
     const dl = files.download || files.vsix;
-    if (typeof dl === 'string') return dl;
+    if (typeof dl === "string") return dl;
     return undefined;
   } catch {
     return undefined;
@@ -594,48 +710,68 @@ async function searchVsMarketplace(query: string): Promise<ExtensionItem[]> {
         {
           criteria: [
             { filterType: 10, value: query },
-            { filterType: 12, value: 'Microsoft.VisualStudio.Code' }
+            { filterType: 12, value: "Microsoft.VisualStudio.Code" },
           ],
           pageNumber: 1,
           pageSize: 24,
           sortBy: 0,
-          sortOrder: 0
-        }
+          sortOrder: 0,
+        },
       ],
       assetTypes: [],
-      flags: 914
+      flags: 914,
     };
-    const res = await fetch('https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json;api-version=7.1-preview.1'
+    const res = await fetch(
+      "https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json;api-version=7.1-preview.1",
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body)
-    });
+    );
     if (!res.ok) return [];
     const data = await res.json();
     const exts: any[] = data?.results?.[0]?.extensions || [];
     const out: ExtensionItem[] = exts.map((e) => {
-      const publisher = e?.publisher?.publisherName || 'unknown';
-      const name = e?.extensionName || 'extension';
+      const publisher = e?.publisher?.publisherName || "unknown";
+      const name = e?.extensionName || "extension";
       const id = `${publisher}.${name}`;
       const displayName = e?.displayName || name;
-      const description = e?.shortDescription || '';
+      const description = e?.shortDescription || "";
       const version = e?.versions?.[0]?.version;
       let iconUrl: string | undefined;
       try {
         const files: any[] = e?.versions?.[0]?.files || [];
-        const icon = files.find(f => typeof f?.assetType === 'string' && f.assetType.toLowerCase().includes('icon'));
+        const icon = files.find(
+          (f) =>
+            typeof f?.assetType === "string" &&
+            f.assetType.toLowerCase().includes("icon"),
+        );
         iconUrl = icon?.source;
       } catch {}
       let vsixUrl: string | undefined;
       try {
         const files: any[] = e?.versions?.[0]?.files || [];
-        const vsix = files.find(f => f.assetType === 'Microsoft.VisualStudio.Services.VSIXPackage');
+        const vsix = files.find(
+          (f) => f.assetType === "Microsoft.VisualStudio.Services.VSIXPackage",
+        );
         vsixUrl = vsix?.source;
       } catch {}
-      return { id, name, displayName, publisher, version, description, iconUrl, vsixUrl, installedAt: 0, enabled: false };
+      return {
+        id,
+        name,
+        displayName,
+        publisher,
+        version,
+        description,
+        iconUrl,
+        vsixUrl,
+        installedAt: 0,
+        enabled: false,
+      };
     });
     return out;
   } catch {
@@ -643,8 +779,15 @@ async function searchVsMarketplace(query: string): Promise<ExtensionItem[]> {
   }
 }
 
-async function resolveVsixFromMarketplace(publisher: string, name: string): Promise<string | undefined> {
+async function resolveVsixFromMarketplace(
+  publisher: string,
+  name: string,
+): Promise<string | undefined> {
   const items = await searchVsMarketplace(`${publisher}.${name}`);
-  const match = items.find(i => i.publisher.toLowerCase() === publisher.toLowerCase() && i.name.toLowerCase() === name.toLowerCase());
+  const match = items.find(
+    (i) =>
+      i.publisher.toLowerCase() === publisher.toLowerCase() &&
+      i.name.toLowerCase() === name.toLowerCase(),
+  );
   return match?.vsixUrl;
 }
