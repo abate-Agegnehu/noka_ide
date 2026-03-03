@@ -173,10 +173,10 @@ wss.on("connection", (ws) => {
   ws.send(JSON.stringify({ type: "hello", processes: listProcesses() }));
 });
 
-const PORT = process.env.NOVA_BACKEND_PORT
-  ? Number(process.env.NOVA_BACKEND_PORT)
+const PORT = process.env.NOKA_BACKEND_PORT
+  ? Number(process.env.NOKA_BACKEND_PORT)
   : 3005;
 server.listen(PORT, "0.0.0.0", () => {
   // eslint-disable-next-line no-console
-  console.log(`Nova backend listening on http://localhost:${PORT}`);
+  console.log(`Noka backend listening on http://localhost:${PORT}`);
 });

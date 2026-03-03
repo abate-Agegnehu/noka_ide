@@ -153,14 +153,14 @@ export const Terminal: React.FC = () => {
           term?.write(msg.data);
         } else if (msg.type === "error") {
           term?.write(
-            "\r\n\x1b[31m[Nova Error]: " + msg.message + "\x1b[0m\r\n",
+            "\r\n\x1b[31m[Noka Error]: " + msg.message + "\x1b[0m\r\n",
           );
         }
       };
 
       ws.onerror = () => {
         term?.write(
-          '\r\n\x1b[31m[Nova Error]: Failed to connect to backend server (port 3005). Please ensure the backend is running with "npm run server".\x1b[0m\r\n',
+          '\r\n\x1b[31m[Noka Error]: Failed to connect to backend server (port 3005). Please ensure the backend is running with "npm run server".\x1b[0m\r\n',
         );
       };
 
