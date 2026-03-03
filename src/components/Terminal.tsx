@@ -77,12 +77,10 @@ export const Terminal: React.FC = () => {
       const rootFolder = Object.values(files).find((f) => f.parentId === null);
       let cwd = runtimeProjectPath || "";
 
-      // If we have a root folder but no path yet, or if the root folder changed,
-      // try to detect the path automatically.  The store will prompt the user
-      // for a path if the backend cannot determine one; when detection returns
-      // nothing we also fall back to a relative path so that projects located
-      // inside the same directory tree as the server still work.
-      if (rootFolder) {
+      // If we have a root folder but no path yet, try to detect it automatically.
+      // If detection fails, we should NOT fallback to the folder name as a relative path
+      // because that will likely result in the IDE's own directory as the base.
+      if (rootFolder && !cwd) {
         try {
           const detectedPath = await detectProjectPath(rootFolder.name, {
             promptOnFail: false,
@@ -92,11 +90,6 @@ export const Terminal: React.FC = () => {
           }
         } catch (e) {
           console.warn("Backend offline or path detection failed");
-        }
-
-        if (!cwd) {
-          // relative fallback
-          cwd = rootFolder.name;
         }
       }
 
