@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef,useEffect } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Extensions } from "./components/Extensions";
 import { CodeEditor } from "./components/CodeEditor";
@@ -22,6 +22,8 @@ import {
   FolderOpen,
   FileCode,
   ExternalLink,
+  History,
+  ChevronRight,
   X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -50,7 +52,34 @@ export default function App() {
     addTerminal,
     activeTerminalId,
     setActiveTerminal,
+    recentProjects,
+    addRecentProject,
+    validateRecentProjects,
+    loadProject,
   } = useIDEStore();
+
+  useEffect(() => {
+    validateRecentProjects();
+  }, []);
+
+  useEffect(() => {
+    const { runtimeProjectPath, files, addRecentProject } = useIDEStore.getState();
+    if (runtimeProjectPath) {
+      const rootFolder = Object.values(files).find((f) => f.parentId === null);
+      if (rootFolder) {
+        addRecentProject(rootFolder.name, runtimeProjectPath);
+      }
+    }
+  }, [runtimeProjectPath]);
+
+  const [isRecentMenuOpen, setIsRecentMenuOpen] = useState(false);
+
+  const handleOpenRecent = async (project: { name: string; path: string }) => {
+    await loadProject(project.path);
+    addRecentProject(project.name, project.path);
+    setIsFileMenuOpen(false);
+    setIsRecentMenuOpen(false);
+  };
 
   const activeFile = activeFileId ? files[activeFileId] : null;
   const lastStartedPortRef = useRef<number | null>(null);
@@ -438,6 +467,43 @@ export default function App() {
                     >
                       <ExternalLink size={14} className="text-blue-400" />
                       <span>New Window</span>
+                    </button>
+                    <button
+                      className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors group relative"
+                      onMouseEnter={() => setIsRecentMenuOpen(true)}
+                      onMouseLeave={() => setIsRecentMenuOpen(false)}
+                    >
+                      <History size={14} className="text-blue-400" />
+                      <span>Open Recent</span>
+                      <ChevronRight size={14} className="ml-auto text-slate-500" />
+                      
+                      {isRecentMenuOpen && (
+                        <div className="absolute left-full top-0 ml-1 w-64 bg-slate-900 border border-white/10 rounded-lg shadow-2xl py-1 z-[110]">
+                          {recentProjects.length > 0 ? (
+                            recentProjects.map((project) => (
+                              <button
+                                key={project.path}
+                                className="w-full text-left px-3 py-2 hover:bg-white/5 flex flex-col gap-0.5 transition-colors"
+                                onClick={() => handleOpenRecent(project)}
+                              >
+                                <span className="text-[11px] font-medium text-slate-200 truncate">
+                                  {project.name}
+                                </span>
+                                <span className="text-[9px] text-slate-500 truncate font-mono">
+                                  {project.path}
+                                </span>
+                                <span className="text-[8px] text-slate-600">
+                                  {new Date(project.lastOpened).toLocaleString()}
+                                </span>
+                              </button>
+                            ))
+                          ) : (
+                            <div className="px-3 py-2 text-[10px] text-slate-500 italic">
+                              No recent projects
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </button>
                     <div className="h-px bg-white/5 my-1" />
                     <button

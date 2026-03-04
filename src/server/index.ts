@@ -109,6 +109,154 @@ app.post("/api/detect-path", (req, res) => {
   res.json({ path: null });
 });
 
+app.post("/api/validate-path", (req, res) => {
+  const { path: p } = req.body;
+  if (!p) return res.status(400).json({ error: "Path is required" });
+  try {
+    const exists = fs.existsSync(p) && fs.statSync(p).isDirectory();
+    res.json({ exists });
+  } catch (e) {
+    res.json({ exists: false });
+  }
+});
+
+app.post("/api/get-project-files", (req, res) => {
+  const { path: projectPath } = req.body;
+  if (!projectPath) return res.status(400).json({ error: "Path is required" });
+
+  try {
+    if (!fs.existsSync(projectPath)) {
+      return res.status(404).json({ error: "Project path not found" });
+    }
+
+    const files: Record<string, any> = {};
+    const IGNORED = ["node_modules", ".git", "dist", "build", ".next", ".cache"];
+
+    const readDir = (dir: string, parentId: string | null) => {
+      const items = fs.readdirSync(dir, { withFileTypes: true });
+      const dirName = path.basename(dir);
+      const dirId = parentId === null ? "root" : `node-${Math.random().toString(36).substr(2, 9)}`;
+
+      if (parentId === null) {
+        files["root"] = {
+          id: "root",
+          name: dirName,
+          type: "folder",
+          parentId: null,
+          isOpen: true,
+        };
+      }
+
+      for (const item of items) {
+        if (IGNORED.includes(item.name)) continue;
+
+        const fullPath = path.join(dir, item.name);
+        const id = `node-${Math.random().toString(36).substr(2, 9)}`;
+
+        if (item.isDirectory()) {
+          files[id] = {
+            id,
+            name: item.name,
+            type: "folder",
+            parentId: parentId === null ? "root" : dirId,
+            isOpen: false,
+          };
+          // For nested folders, we need to pass the correct parentId
+          // The current implementation is a bit simple, let's fix the recursive call
+        } else {
+          const ext = path.extname(item.name).slice(1);
+          const languageMap: Record<string, string> = {
+            js: "javascript",
+            ts: "typescript",
+            tsx: "typescript",
+            jsx: "javascript",
+            html: "html",
+            css: "css",
+            json: "json",
+            py: "python",
+            md: "markdown",
+          };
+          files[id] = {
+            id,
+            name: item.name,
+            type: "file",
+            parentId: parentId === null ? "root" : dirId,
+            content: fs.readFileSync(fullPath, "utf-8"),
+            language: languageMap[ext] || "text",
+          };
+        }
+      }
+    };
+
+    // Better recursive implementation
+    const allFiles: Record<string, any> = {};
+    const projectRootName = path.basename(projectPath);
+    
+    const scan = (currentPath: string, parentId: string | null) => {
+      const id = parentId === null ? "root" : `node-${Math.random().toString(36).substr(2, 9)}`;
+      const name = path.basename(currentPath);
+      const isDir = fs.statSync(currentPath).isDirectory();
+
+      if (isDir) {
+        allFiles[id] = {
+          id,
+          name: parentId === null ? projectRootName : name,
+          type: "folder",
+          parentId,
+          isOpen: parentId === null,
+        };
+
+        const items = fs.readdirSync(currentPath, { withFileTypes: true });
+        for (const item of items) {
+          if (IGNORED.includes(item.name)) continue;
+          scan(path.join(currentPath, item.name), id);
+        }
+      } else {
+        const ext = path.extname(name).slice(1).toLowerCase();
+        const BINARY_EXTS = ["png", "jpg", "jpeg", "gif", "ico", "pdf", "zip", "exe", "dll", "so", "dylib", "woff", "woff2", "ttf", "eot"];
+        
+        const languageMap: Record<string, string> = {
+          js: "javascript",
+          ts: "typescript",
+          tsx: "typescript",
+          jsx: "javascript",
+          html: "html",
+          css: "css",
+          json: "json",
+          py: "python",
+          md: "markdown",
+        };
+
+        let content = "";
+        if (!BINARY_EXTS.includes(ext)) {
+          try {
+            content = fs.readFileSync(currentPath, "utf-8");
+          } catch (e) {
+            console.warn(`Failed to read file ${currentPath}:`, e);
+          }
+        } else {
+          content = "[Binary Content]";
+        }
+
+        allFiles[id] = {
+          id,
+          name,
+          type: "file",
+          parentId,
+          content,
+          language: languageMap[ext] || "text",
+        };
+      }
+    };
+
+    scan(projectPath, null);
+    res.json({ files: allFiles });
+  } catch (e) {
+    console.error("Error reading project files:", e);
+    res.status(500).json({ error: "Failed to read project files" });
+  }
+});
+
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 

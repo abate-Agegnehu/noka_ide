@@ -44,6 +44,12 @@ export interface ExtensionItem {
   enabled: boolean;
 }
 
+export interface RecentProject {
+  name: string;
+  path: string;
+  lastOpened: number;
+}
+
 interface IDEState {
   files: Record<string, FileNode>;
   activeFileId: string | null;
@@ -64,8 +70,12 @@ interface IDEState {
   runtimeProjectPath?: string | null;
   runtimeProcessId?: string | null;
   runtimeConnected: boolean;
+  recentProjects: RecentProject[];
 
   // Actions
+  addRecentProject: (name: string, path: string) => void;
+  removeRecentProject: (path: string) => void;
+  validateRecentProjects: () => Promise<void>;
   createFile: (
     name: string,
     parentId: string | null,
@@ -111,6 +121,7 @@ interface IDEState {
     name: string,
     options?: { promptOnFail?: boolean },
   ) => Promise<string | null>;
+  loadProject: (path: string) => Promise<void>;
 }
 
 const initialFiles: Record<string, FileNode> = {
@@ -207,6 +218,43 @@ export const useIDEStore = create<IDEState>()(
       runtimeProjectPath: null,
       runtimeProcessId: null,
       runtimeConnected: false,
+      recentProjects: [],
+
+      addRecentProject: (name, path) => {
+        set((state) => {
+          const filtered = state.recentProjects.filter((p) => p.path !== path);
+          const newList = [
+            { name, path, lastOpened: Date.now() },
+            ...filtered,
+          ].slice(0, 10); // Keep last 10
+          return { recentProjects: newList };
+        });
+      },
+
+      removeRecentProject: (path) => {
+        set((state) => ({
+          recentProjects: state.recentProjects.filter((p) => p.path !== path),
+        }));
+      },
+
+      validateRecentProjects: async () => {
+        const { recentProjects, removeRecentProject } = get();
+        for (const project of recentProjects) {
+          try {
+            const res = await fetch("http://localhost:3005/api/validate-path", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ path: project.path }),
+            });
+            const data = await res.json();
+            if (!data.exists) {
+              removeRecentProject(project.path);
+            }
+          } catch (e) {
+            console.error("Failed to validate path:", project.path, e);
+          }
+        }
+      },
 
       createFile: (name, parentId, content = "") => {
         const id = uuidv4();
@@ -479,6 +527,39 @@ export const useIDEStore = create<IDEState>()(
           }
         }
         return null;
+      },
+      loadProject: async (path: string) => {
+        try {
+          const res = await fetch("http://localhost:3005/api/get-project-files", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path }),
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.files) {
+              set({
+                files: data.files,
+                runtimeProjectPath: path,
+                activeFileId: null,
+                openFileIds: [],
+              });
+              // Find first file to open if any
+              const firstFile = Object.values(data.files as Record<string, FileNode>).find(f => f.type === 'file');
+              if (firstFile) {
+                set({
+                  activeFileId: firstFile.id,
+                  openFileIds: [firstFile.id]
+                });
+              }
+            }
+          } else {
+            console.error("Failed to load project files");
+          }
+        } catch (e) {
+          console.error("Error loading project:", e);
+        }
       },
       searchMarketplace: async (query: string) => {
         set({ isFetchingMarketplace: true });
