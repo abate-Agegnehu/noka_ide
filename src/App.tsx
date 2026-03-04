@@ -33,6 +33,7 @@ import {
   Copy,
   Clipboard,
   SearchCode,
+  Replace,
   X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -751,6 +752,21 @@ export default function App() {
                          <span>Find</span>
                        </div>
                        <span className="text-[10px] text-slate-500">Ctrl+F</span>
+                     </button>
+                    <button
+                      className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
+                      onClick={() => {
+                         const bc = new BroadcastChannel("noka-ide-editor-actions");
+                         bc.postMessage("replace");
+                         bc.close();
+                         setIsEditMenuOpen(false);
+                       }}
+                     >
+                       <div className="flex items-center gap-2">
+                         <Replace size={14} className="text-blue-400" />
+                         <span>Replace</span>
+                       </div>
+                       <span className="text-[10px] text-slate-500">Ctrl+H</span>
                      </button>
                    </motion.div>
                 )}
