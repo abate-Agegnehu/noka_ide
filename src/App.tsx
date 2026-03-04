@@ -21,6 +21,7 @@ import {
   FilePlus,
   FolderOpen,
   FileCode,
+  ExternalLink,
   X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -425,6 +426,20 @@ export default function App() {
                     exit={{ opacity: 0, y: 5 }}
                     className="absolute top-full left-0 mt-1 w-48 bg-slate-900 border border-white/10 rounded-lg shadow-2xl py-1 z-[100]"
                   >
+                    <button
+                      className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors"
+                      onClick={() => {
+                        window.open(
+                          window.location.origin + "?session=" + uuidv4(),
+                          "_blank",
+                        );
+                        setIsFileMenuOpen(false);
+                      }}
+                    >
+                      <ExternalLink size={14} className="text-blue-400" />
+                      <span>New Window</span>
+                    </button>
+                    <div className="h-px bg-white/5 my-1" />
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors"
                       onClick={() => {

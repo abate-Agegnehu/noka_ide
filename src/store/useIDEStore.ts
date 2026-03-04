@@ -663,7 +663,9 @@ export const useIDEStore = create<IDEState>()(
       },
     }),
     {
-      name: "nova-ide-storage",
+      name:
+        new URLSearchParams(window.location.search).get("session") ||
+        "nova-ide-storage",
       storage: createJSONStorage(() => idbStorage),
     },
   ),
