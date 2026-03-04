@@ -25,6 +25,7 @@ import {
   History,
   ChevronRight,
   FolderMinus,
+  MinusSquare,
   X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -86,6 +87,13 @@ export default function App() {
   const handleCloseFolder = () => {
     if (window.confirm("Are you sure you want to close the folder? Any unsaved changes will be lost.")) {
       closeFolder();
+      setIsFileMenuOpen(false);
+    }
+  };
+
+  const handleCloseWindow = () => {
+    if (window.confirm("Are you sure you want to close this window? Any unsaved changes will be lost.")) {
+      window.close();
       setIsFileMenuOpen(false);
     }
   };
@@ -557,6 +565,13 @@ export default function App() {
                     >
                       <FolderMinus size={14} />
                       <span>Close Folder</span>
+                    </button>
+                    <button
+                      className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors text-red-400 hover:text-red-300"
+                      onClick={handleCloseWindow}
+                    >
+                      <MinusSquare size={14} />
+                      <span>Close Window</span>
                     </button>
                   </motion.div>
                 )}
