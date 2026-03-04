@@ -49,12 +49,10 @@ interface IDEState {
   activeFileId: string | null;
   openFileIds: string[];
   sidebarWidth: number;
-  previewWidth: number;
   isChatOpen: boolean;
   isTerminalOpen: boolean;
   terminalLogs: string[];
   isRunning: boolean;
-  previewUrl: string;
   terminals: { id: string; name: string; initialCommand?: string }[];
   activeTerminalId: string | null;
   activePanel: ActivePanel;
@@ -68,7 +66,6 @@ interface IDEState {
   runtimeConnected: boolean;
 
   // Actions
-  setPreviewUrl: (url: string) => void;
   createFile: (
     name: string,
     parentId: string | null,
@@ -81,7 +78,6 @@ interface IDEState {
   closeFile: (id: string) => void;
   updateFileContent: (id: string, content: string) => void;
   setSidebarWidth: (width: number) => void;
-  setPreviewWidth: (width: number) => void;
   toggleChat: () => void;
   toggleTerminal: () => void;
   addTerminalLog: (log: string) => void;
@@ -193,7 +189,6 @@ export const useIDEStore = create<IDEState>()(
       activeFileId: "index-html",
       openFileIds: ["index-html"],
       sidebarWidth: 260,
-      previewWidth: 400,
       isChatOpen: false,
       isTerminalOpen: true,
       terminalLogs: [
@@ -201,7 +196,6 @@ export const useIDEStore = create<IDEState>()(
         'Type "help" to see available commands.',
       ],
       isRunning: false,
-      previewUrl: "",
       terminals: [],
       activeTerminalId: null,
       activePanel: "explorer",
@@ -214,7 +208,6 @@ export const useIDEStore = create<IDEState>()(
       runtimeProcessId: null,
       runtimeConnected: false,
 
-      setPreviewUrl: (url) => set({ previewUrl: url }),
       createFile: (name, parentId, content = "") => {
         const id = uuidv4();
         const extension = name.split(".").pop() || "text";
@@ -345,7 +338,6 @@ export const useIDEStore = create<IDEState>()(
       },
 
       setSidebarWidth: (width) => set({ sidebarWidth: width }),
-      setPreviewWidth: (width) => set({ previewWidth: width }),
       toggleChat: () => set((state) => ({ isChatOpen: !state.isChatOpen })),
       toggleTerminal: () =>
         set((state) => ({ isTerminalOpen: !state.isTerminalOpen })),
