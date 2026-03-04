@@ -101,3 +101,9 @@ export function killPtySession(id: string) {
     sessions.delete(id);
   }
 }
+
+export function killAllPtySessions() {
+  for (const id of sessions.keys()) {
+    killPtySession(id);
+  }
+}

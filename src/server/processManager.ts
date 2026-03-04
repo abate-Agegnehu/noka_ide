@@ -98,6 +98,12 @@ export function stopProcess(id: string) {
   return true;
 }
 
+export function stopAllProcesses() {
+  for (const id of procs.keys()) {
+    stopProcess(id);
+  }
+}
+
 export function inferFrameworkFromLogs(line: string): string | undefined {
   if (/VITE v\d/i.test(line) || /Local:\s*http:\/\/.*:5\d{3}/i.test(line)) return 'vite';
   if (/started server on .*:3000|ready - started server/i.test(line)) return 'next';

@@ -5,10 +5,16 @@ import http from "node:http";
 import {
   startProcess,
   stopProcess,
+  stopAllProcesses,
   listProcesses,
   extractUrlFromLogs,
 } from "./processManager";
-import { createPtySession, getPtySession, killPtySession } from "./ptyManager";
+import {
+  createPtySession,
+  getPtySession,
+  killPtySession,
+  killAllPtySessions,
+} from "./ptyManager";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -254,6 +260,22 @@ app.post("/api/get-project-files", (req, res) => {
   } catch (e) {
     console.error("Error reading project files:", e);
     res.status(500).json({ error: "Failed to read project files" });
+  }
+});
+
+app.post("/api/shutdown", (req, res) => {
+  console.log("[Server] Shutting down all processes and exit...");
+  try {
+    stopAllProcesses();
+    killAllPtySessions();
+    res.json({ ok: true });
+    // Delay exit to allow response to be sent
+    setTimeout(() => {
+      process.exit(0);
+    }, 500);
+  } catch (e) {
+    console.error("Shutdown error:", e);
+    res.status(500).json({ error: "Shutdown failed" });
   }
 });
 

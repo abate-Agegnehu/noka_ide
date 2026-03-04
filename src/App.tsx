@@ -26,6 +26,7 @@ import {
   ChevronRight,
   FolderMinus,
   MinusSquare,
+  LogOut,
   X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -97,6 +98,37 @@ export default function App() {
       setIsFileMenuOpen(false);
     }
   };
+
+  const handleExit = async () => {
+    if (window.confirm("Are you sure you want to exit? This will close all windows and stop all background processes.")) {
+      try {
+        // Broadcast to other windows to close
+        const bc = new BroadcastChannel("noka-ide-channel");
+        bc.postMessage("exit");
+        bc.close();
+
+        // Shutdown backend
+        await fetch("http://localhost:3005/api/shutdown", { method: "POST" });
+        
+        // Close self
+        window.close();
+      } catch (e) {
+        console.error("Exit error:", e);
+        // Fallback for window.close() if it's the only window
+        window.location.href = "about:blank";
+      }
+    }
+  };
+
+  useEffect(() => {
+    const bc = new BroadcastChannel("noka-ide-channel");
+    bc.onmessage = (event) => {
+      if (event.data === "exit") {
+        window.close();
+      }
+    };
+    return () => bc.close();
+  }, []);
 
   const activeFile = activeFileId ? files[activeFileId] : null;
   const lastStartedPortRef = useRef<number | null>(null);
@@ -572,6 +604,13 @@ export default function App() {
                     >
                       <MinusSquare size={14} />
                       <span>Close Window</span>
+                    </button>
+                    <button
+                      className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors text-red-400 hover:text-red-300 font-bold"
+                      onClick={handleExit}
+                    >
+                      <LogOut size={14} />
+                      <span>Exit</span>
                     </button>
                   </motion.div>
                 )}
