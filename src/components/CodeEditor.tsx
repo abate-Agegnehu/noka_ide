@@ -167,6 +167,40 @@ export const CodeEditor: React.FC = () => {
     disposablesRef.current = [];
   };
 
+  const performCopy = async () => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
+    editor.focus();
+    const model = editor.getModel();
+    if (!model) return;
+    const sel = editor.getSelection();
+    let text = '';
+    if (!sel || sel.isEmpty()) {
+      const pos = editor.getPosition();
+      const ln = pos?.lineNumber || 1;
+      text = model.getLineContent(ln) + (model.getEOL?.() || '\n');
+    } else {
+      text = model.getValueInRange(sel);
+    }
+    try {
+      const lang = model.getLanguageId?.() || 'plaintext';
+      const html = await monaco.editor.colorize(text, lang, { tabSize: (model.getOptions?.().tabSize as number) || 4 });
+      const ClipboardItemRef: any = (window as any).ClipboardItem;
+      if (navigator.clipboard && (navigator.clipboard as any).write && ClipboardItemRef) {
+        const item = new ClipboardItemRef({
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+          'text/html': new Blob([html], { type: 'text/html' })
+        });
+        await (navigator.clipboard as any).write([item]);
+      } else {
+        await navigator.clipboard.writeText(text);
+      }
+    } catch {
+      try { await navigator.clipboard.writeText(text); } catch {}
+    }
+  };
+
   const ensureEs7Snippets = async () => {
     if (es7SnippetsRef.current) return es7SnippetsRef.current;
     try {
@@ -407,8 +441,7 @@ export const CodeEditor: React.FC = () => {
                   editorRef.current.focus();
                   editorRef.current.trigger('keyboard', 'editor.action.clipboardCutAction', null);
                 } else if (data === 'copy' && editorRef.current) {
-                  editorRef.current.focus();
-                  editorRef.current.trigger('keyboard', 'editor.action.clipboardCopyAction', null);
+                  performCopy();
                 } else if (data === 'paste' && editorRef.current) {
                   editorRef.current.focus();
                   editorRef.current.trigger('keyboard', 'editor.action.clipboardPasteAction', null);
@@ -440,6 +473,7 @@ export const CodeEditor: React.FC = () => {
             lineHeight: 1.6,
             bracketPairColorization: { enabled: true },
             guides: { bracketPairs: true },
+            copyWithSyntaxHighlighting: true,
           }}
           loading={<div className="flex items-center justify-center h-full text-slate-500">Loading Editor...</div>}
         />
