@@ -403,6 +403,15 @@ export const CodeEditor: React.FC = () => {
                   editorRef.current.trigger('menu', 'undo', null);
                 } else if (data === 'redo' && editorRef.current) {
                   editorRef.current.trigger('menu', 'redo', null);
+                } else if (data === 'cut' && editorRef.current) {
+                  editorRef.current.focus();
+                  editorRef.current.trigger('keyboard', 'editor.action.clipboardCutAction', null);
+                } else if (data === 'copy' && editorRef.current) {
+                  editorRef.current.focus();
+                  editorRef.current.trigger('keyboard', 'editor.action.clipboardCopyAction', null);
+                } else if (data === 'paste' && editorRef.current) {
+                  editorRef.current.focus();
+                  editorRef.current.trigger('keyboard', 'editor.action.clipboardPasteAction', null);
                 } else if (data === 'find' && editorRef.current) {
                   editorRef.current.trigger('menu', 'actions.find', null);
                 } else if (data?.type === 'close' && monacoRef.current) {

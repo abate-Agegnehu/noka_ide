@@ -250,6 +250,27 @@ export default function App() {
     setIsEditMenuOpen(false);
   };
 
+  const handleCut = () => {
+    const bc = new BroadcastChannel("noka-ide-editor-actions");
+    bc.postMessage("cut");
+    bc.close();
+    setIsEditMenuOpen(false);
+  };
+
+  const handleCopy = () => {
+    const bc = new BroadcastChannel("noka-ide-editor-actions");
+    bc.postMessage("copy");
+    bc.close();
+    setIsEditMenuOpen(false);
+  };
+
+  const handlePaste = () => {
+    const bc = new BroadcastChannel("noka-ide-editor-actions");
+    bc.postMessage("paste");
+    bc.close();
+    setIsEditMenuOpen(false);
+  };
+
   const firstRoot = Object.values(files).find((f) => f.parentId === null);
 
   const handleOpenFile = () => {
@@ -683,42 +704,42 @@ export default function App() {
                          <span>Redo</span>
                        </div>
                        <span className="text-[10px] text-slate-500">Ctrl+Y</span>
-                     </button>
-                     <div className="h-px bg-white/5 my-1" />
-                     <button
-                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                       onClick={() => setIsEditMenuOpen(false)}
-                     >
-                       <div className="flex items-center gap-2 text-slate-400">
-                         <Scissors size={14} />
-                         <span>Cut</span>
-                       </div>
-                       <span className="text-[10px] text-slate-600">Ctrl+X</span>
-                     </button>
-                     <button
-                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                       onClick={() => setIsEditMenuOpen(false)}
-                     >
-                       <div className="flex items-center gap-2 text-slate-400">
-                         <Copy size={14} />
-                         <span>Copy</span>
-                       </div>
-                       <span className="text-[10px] text-slate-600">Ctrl+C</span>
-                     </button>
-                     <button
-                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                       onClick={() => setIsEditMenuOpen(false)}
-                     >
-                       <div className="flex items-center gap-2 text-slate-400">
-                         <Clipboard size={14} />
-                         <span>Paste</span>
-                       </div>
-                       <span className="text-[10px] text-slate-600">Ctrl+V</span>
-                     </button>
-                     <div className="h-px bg-white/5 my-1" />
-                     <button
-                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                       onClick={() => {
+                    </button>
+                    <div className="h-px bg-white/5 my-1" />
+                    <button
+                      className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
+                      onClick={handleCut}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Scissors size={14} className="text-blue-400" />
+                        <span>Cut</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500">Ctrl+X</span>
+                    </button>
+                    <button
+                      className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
+                      onClick={handleCopy}
+                    >
+                      <div className="flex items-center gap-2 text-slate-200">
+                        <Copy size={14} className="text-blue-400" />
+                        <span>Copy</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500">Ctrl+C</span>
+                    </button>
+                    <button
+                      className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
+                      onClick={handlePaste}
+                    >
+                      <div className="flex items-center gap-2 text-slate-200">
+                        <Clipboard size={14} className="text-blue-400" />
+                        <span>Paste</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500">Ctrl+V</span>
+                    </button>
+                    <div className="h-px bg-white/5 my-1" />
+                    <button
+                      className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
+                      onClick={() => {
                          const bc = new BroadcastChannel("noka-ide-editor-actions");
                          bc.postMessage("find");
                          bc.close();
