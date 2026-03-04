@@ -1,7 +1,7 @@
 import React from 'react';
 import Editor from '@monaco-editor/react';
 import { useIDEStore } from '../store/useIDEStore';
-import { X } from 'lucide-react';
+import { X, Search, ChevronUp, ChevronDown, Type, CaseSensitive } from 'lucide-react';
 import { cn, getFileIcon } from '../utils/helpers';
 
 export const CodeEditor: React.FC = () => {
@@ -13,6 +13,122 @@ export const CodeEditor: React.FC = () => {
   const editorRef = React.useRef<any>(null);
   const disposablesRef = React.useRef<any[]>([]);
   const es7SnippetsRef = React.useRef<any[] | null>(null);
+
+  const [showFind, setShowFind] = React.useState(false);
+  const [findQuery, setFindQuery] = React.useState('');
+  const [findOptions, setFindOptions] = React.useState({
+    isCaseSensitive: false,
+    isRegex: false,
+    isMatchWholeWord: false,
+  });
+  const [findMatches, setFindMatches] = React.useState<any[]>([]);
+  const [activeMatchIndex, setActiveMatchIndex] = React.useState(-1);
+  const findInputRef = React.useRef<HTMLInputElement>(null);
+  const decorationsRef = React.useRef<string[]>([]);
+
+  const clearFindDecorations = () => {
+    if (editorRef.current) {
+      decorationsRef.current = editorRef.current.deltaDecorations(decorationsRef.current, []);
+    }
+  };
+
+  const updateFindMatches = () => {
+    const editor = editorRef.current;
+    if (!editor || !findQuery) {
+      setFindMatches([]);
+      setActiveMatchIndex(-1);
+      clearFindDecorations();
+      return;
+    }
+
+    const model = editor.getModel();
+    if (!model) return;
+
+    const matches = model.findMatches(
+      findQuery,
+      false, // searchOnlyEditableRange
+      findOptions.isRegex,
+      findOptions.isCaseSensitive,
+      findOptions.isMatchWholeWord ? ' ' : null, // wordSeparators
+      true // captureMatches
+    );
+
+    setFindMatches(matches);
+    
+    // Highlight all matches
+    const newDecorations = matches.map((match: any, idx: number) => ({
+      range: match.range,
+      options: {
+        className: idx === activeMatchIndex ? 'bg-yellow-500/50' : 'bg-blue-500/30',
+        inlineClassName: idx === activeMatchIndex ? 'bg-yellow-500/50' : 'bg-blue-500/30',
+      },
+    }));
+
+    decorationsRef.current = editor.deltaDecorations(decorationsRef.current, newDecorations);
+
+    if (matches.length > 0 && activeMatchIndex === -1) {
+      setActiveMatchIndex(0);
+      editor.revealRangeInCenter(matches[0].range);
+    }
+  };
+
+  React.useEffect(() => {
+    updateFindMatches();
+  }, [findQuery, findOptions, activeFileId]);
+
+  React.useEffect(() => {
+    const editor = editorRef.current;
+    if (editor && findMatches.length > 0 && activeMatchIndex >= 0) {
+      const match = findMatches[activeMatchIndex];
+      editor.revealRangeInCenter(match.range);
+      
+      // Update highlights to show active one
+      const newDecorations = findMatches.map((m: any, idx: number) => ({
+        range: m.range,
+        options: {
+          className: idx === activeMatchIndex ? 'bg-yellow-500/60 ring-2 ring-yellow-400' : 'bg-blue-500/30',
+          inlineClassName: idx === activeMatchIndex ? 'bg-yellow-500/60' : 'bg-blue-500/30',
+        },
+      }));
+      decorationsRef.current = editor.deltaDecorations(decorationsRef.current, newDecorations);
+    }
+  }, [activeMatchIndex]);
+
+  React.useEffect(() => {
+    if (!showFind) {
+      clearFindDecorations();
+    }
+  }, [showFind]);
+
+  const handleNextMatch = () => {
+    if (findMatches.length === 0) return;
+    setActiveMatchIndex((prev) => (prev + 1) % findMatches.length);
+  };
+
+  const handlePrevMatch = () => {
+    if (findMatches.length === 0) return;
+    setActiveMatchIndex((prev) => (prev - 1 + findMatches.length) % findMatches.length);
+  };
+
+  const toggleFind = () => {
+    if (!showFind) {
+      const editor = editorRef.current;
+      if (editor) {
+        const selection = editor.getSelection();
+        if (selection && !selection.isEmpty()) {
+          const selectedText = editor.getModel().getValueInRange(selection);
+          if (selectedText.length < 100) { // arbitrary limit for pre-filling find
+            setFindQuery(selectedText);
+          }
+        }
+      }
+      setShowFind(true);
+      setTimeout(() => findInputRef.current?.focus(), 10);
+    } else {
+      setShowFind(false);
+      clearFindDecorations();
+    }
+  };
 
   const loadScript = (src: string) => {
     return new Promise<void>((resolve, reject) => {
@@ -429,7 +545,77 @@ export const CodeEditor: React.FC = () => {
       </div>
 
       {/* Editor */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative group/editor">
+        {showFind && (
+          <div className="absolute top-4 right-8 z-[60] flex items-center gap-2 bg-slate-900 border border-white/10 rounded-lg shadow-2xl p-2 animate-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center gap-1 px-2 py-1 bg-white/5 rounded border border-white/5 focus-within:border-blue-500/50 transition-colors">
+              <Search size={14} className="text-slate-500" />
+              <input
+                ref={findInputRef}
+                type="text"
+                placeholder="Find"
+                className="bg-transparent border-none outline-none text-xs text-slate-200 w-40 placeholder:text-slate-600"
+                value={findQuery}
+                onChange={(e) => setFindQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (e.shiftKey) handlePrevMatch();
+                    else handleNextMatch();
+                  }
+                  if (e.key === 'Escape') toggleFind();
+                }}
+              />
+              <div className="flex items-center gap-0.5 ml-2">
+                <button
+                  className={cn(
+                    "p-1 rounded transition-colors",
+                    findOptions.isCaseSensitive ? "bg-blue-500/20 text-blue-400" : "hover:bg-white/5 text-slate-500"
+                  )}
+                  onClick={() => setFindOptions(prev => ({ ...prev, isCaseSensitive: !prev.isCaseSensitive }))}
+                  title="Match Case"
+                >
+                  <CaseSensitive size={14} />
+                </button>
+                <button
+                  className={cn(
+                    "p-1 rounded transition-colors",
+                    findOptions.isRegex ? "bg-blue-500/20 text-blue-400" : "hover:bg-white/5 text-slate-500"
+                  )}
+                  onClick={() => setFindOptions(prev => ({ ...prev, isRegex: !prev.isRegex }))}
+                  title="Use Regular Expression"
+                >
+                  <Type size={14} />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1 border-l border-white/10 pl-2">
+              <div className="text-[10px] text-slate-500 min-w-[40px] text-center">
+                {findMatches.length > 0 ? `${activeMatchIndex + 1}/${findMatches.length}` : 'No results'}
+              </div>
+              <button
+                className="p-1 hover:bg-white/5 rounded text-slate-400 transition-colors disabled:opacity-30"
+                onClick={handlePrevMatch}
+                disabled={findMatches.length === 0}
+              >
+                <ChevronUp size={14} />
+              </button>
+              <button
+                className="p-1 hover:bg-white/5 rounded text-slate-400 transition-colors disabled:opacity-30"
+                onClick={handleNextMatch}
+                disabled={findMatches.length === 0}
+              >
+                <ChevronDown size={14} />
+              </button>
+              <button
+                className="p-1 hover:bg-white/5 rounded text-slate-400 hover:text-white transition-colors ml-1"
+                onClick={toggleFind}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
         <Editor
           height="100%"
           path={activeFile.id}
@@ -443,6 +629,9 @@ export const CodeEditor: React.FC = () => {
                 if (formatOnSave) {
                   handleFormat();
                 }
+              });
+              editor.addCommand((monaco?.KeyMod?.CtrlCmd || 0) | (monaco?.KeyCode?.KeyF || 0), () => {
+                toggleFind();
               });
               editor.addCommand(
                 (monaco?.KeyMod?.Shift || 0) | (monaco?.KeyMod?.Alt || 0) | (monaco?.KeyCode?.KeyF || 0),
@@ -471,7 +660,7 @@ export const CodeEditor: React.FC = () => {
                 } else if (data === 'paste' && editorRef.current) {
                   performPaste();
                 } else if (data === 'find' && editorRef.current) {
-                  editorRef.current.trigger('menu', 'actions.find', null);
+                  toggleFind();
                 } else if (data?.type === 'close' && monacoRef.current) {
                   // Find and dispose the model for the closed file to clear history
                   const models = monacoRef.current.editor.getModels();
