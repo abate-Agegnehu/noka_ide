@@ -201,6 +201,32 @@ export const CodeEditor: React.FC = () => {
     }
   };
 
+  const performPaste = async () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        const selection = editor.getSelection();
+        const model = editor.getModel();
+        if (model && selection) {
+          editor.executeEdits('clipboard', [{
+            range: selection,
+            text: text,
+            forceMoveMarkers: true
+          }]);
+          // After paste, trigger auto-indent/format if possible
+          editor.getAction('editor.action.formatSelection')?.run();
+        }
+      }
+    } catch (err) {
+      console.error('Failed to paste from clipboard:', err);
+      // Fallback to default trigger if navigator.clipboard fails
+      editor.trigger('keyboard', 'editor.action.clipboardPasteAction', null);
+    }
+  };
+
   const ensureEs7Snippets = async () => {
     if (es7SnippetsRef.current) return es7SnippetsRef.current;
     try {
@@ -443,8 +469,7 @@ export const CodeEditor: React.FC = () => {
                 } else if (data === 'copy' && editorRef.current) {
                   performCopy();
                 } else if (data === 'paste' && editorRef.current) {
-                  editorRef.current.focus();
-                  editorRef.current.trigger('keyboard', 'editor.action.clipboardPasteAction', null);
+                  performPaste();
                 } else if (data === 'find' && editorRef.current) {
                   editorRef.current.trigger('menu', 'actions.find', null);
                 } else if (data?.type === 'close' && monacoRef.current) {
@@ -474,6 +499,8 @@ export const CodeEditor: React.FC = () => {
             bracketPairColorization: { enabled: true },
             guides: { bracketPairs: true },
             copyWithSyntaxHighlighting: true,
+            autoIndent: 'full',
+            formatOnPaste: true,
           }}
           loading={<div className="flex items-center justify-center h-full text-slate-500">Loading Editor...</div>}
         />
