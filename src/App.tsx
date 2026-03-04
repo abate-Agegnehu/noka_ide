@@ -2,6 +2,7 @@ import React, { useState, useRef } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Extensions } from "./components/Extensions";
 import { CodeEditor } from "./components/CodeEditor";
+import { Preview } from "./components/Preview";
 import { Chat } from "./components/Chat";
 import { Terminal } from "./components/Terminal";
 import { useIDEStore, FileNode } from "./store/useIDEStore";
@@ -37,6 +38,7 @@ export default function App() {
     setActivePanel,
     runtimeProjectPath,
     setRuntimeProjectPath,
+    setPreviewUrl,
     addTerminalLog,
     setRunning,
     createFile,
@@ -118,8 +120,10 @@ export default function App() {
                     target = `http://localhost:${lastStartedPortRef.current}`;
                   }
                 }
+                setPreviewUrl(target);
                 addTerminalLog(`Detected server URL: ${target}`);
               } catch {
+                setPreviewUrl(e.url);
                 addTerminalLog(`Detected server URL: ${e.url}`);
               }
             }
@@ -601,6 +605,7 @@ export default function App() {
         <main className="flex-1 flex flex-col min-w-0">
           <div className="flex-1 flex overflow-hidden">
             <CodeEditor />
+            <Preview />
           </div>
           <AnimatePresence>
             {isTerminalOpen && (

@@ -128,10 +128,7 @@ export const Terminal: React.FC = () => {
         if (msg.type === "pty-output" && msg.id === t.id) {
           term.write(msg.data);
         } else if (msg.type === "url") {
-          // Update preview URL and state in the store
-          const store = useIDEStore.getState();
-          store.setPreviewUrl(msg.url);
-          store.setRunning(true);
+          useIDEStore.getState().setPreviewUrl(msg.url);
         }
       };
 

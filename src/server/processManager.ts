@@ -105,10 +105,6 @@ export function inferFrameworkFromLogs(line: string): string | undefined {
 }
 
 export function extractUrlFromLogs(line: string): string | undefined {
-  const m = line.match(/(http:\/\/(?:localhost|0\.0\.0\.0|127\.0\.0\.1):\d{2,5})/i);
-  if (m) {
-    // Standardize to localhost for the browser preview as 0.0.0.0 isn't a valid browser URL
-    return m[1].replace(/0\.0\.0\.0|127\.0\.0\.1/i, 'localhost');
-  }
-  return undefined;
+  const m = line.match(/(http:\/\/localhost:\d{2,5})/i);
+  return m?.[1];
 }
