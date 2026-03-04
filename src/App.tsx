@@ -24,6 +24,7 @@ import {
   ExternalLink,
   History,
   ChevronRight,
+  FolderMinus,
   X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -56,6 +57,7 @@ export default function App() {
     addRecentProject,
     validateRecentProjects,
     loadProject,
+    closeFolder,
   } = useIDEStore();
 
   useEffect(() => {
@@ -79,6 +81,13 @@ export default function App() {
     addRecentProject(project.name, project.path);
     setIsFileMenuOpen(false);
     setIsRecentMenuOpen(false);
+  };
+
+  const handleCloseFolder = () => {
+    if (window.confirm("Are you sure you want to close the folder? Any unsaved changes will be lost.")) {
+      closeFolder();
+      setIsFileMenuOpen(false);
+    }
   };
 
   const activeFile = activeFileId ? files[activeFileId] : null;
@@ -540,6 +549,14 @@ export default function App() {
                     >
                       <FolderOpen size={14} className="text-purple-400" />
                       <span>Open Folder...</span>
+                    </button>
+                    <div className="h-px bg-white/5 my-1" />
+                    <button
+                      className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors text-red-400 hover:text-red-300"
+                      onClick={handleCloseFolder}
+                    >
+                      <FolderMinus size={14} />
+                      <span>Close Folder</span>
                     </button>
                   </motion.div>
                 )}

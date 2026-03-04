@@ -122,6 +122,7 @@ interface IDEState {
     options?: { promptOnFail?: boolean },
   ) => Promise<string | null>;
   loadProject: (path: string) => Promise<void>;
+  closeFolder: () => void;
 }
 
 const initialFiles: Record<string, FileNode> = {
@@ -560,6 +561,15 @@ export const useIDEStore = create<IDEState>()(
         } catch (e) {
           console.error("Error loading project:", e);
         }
+      },
+      closeFolder: () => {
+        set({
+          files: initialFiles,
+          activeFileId: "index-html",
+          openFileIds: ["index-html"],
+          runtimeProjectPath: null,
+          isRunning: false,
+        });
       },
       searchMarketplace: async (query: string) => {
         set({ isFetchingMarketplace: true });
