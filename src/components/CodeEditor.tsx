@@ -7,6 +7,13 @@ import { cn, getFileIcon } from '../utils/helpers';
 export const CodeEditor: React.FC = () => {
   const { files, activeFileId, openFileIds, setActiveFile, closeFile, updateFileContent, formatOnSave, setFormatOnSave, installedExtensions, iconTheme, setActivePanel } = useIDEStore();
   const activeFile = activeFileId ? files[activeFileId] : null;
+  const filesRef = React.useRef(files);
+  const activeFileIdRef = React.useRef(activeFileId);
+
+  React.useEffect(() => {
+    filesRef.current = files;
+    activeFileIdRef.current = activeFileId;
+  }, [files, activeFileId]);
   const [isFormatting, setIsFormatting] = React.useState(false);
   const [formatError, setFormatError] = React.useState<string | null>(null);
   const monacoRef = React.useRef<any>(null);
@@ -740,6 +747,12 @@ export const CodeEditor: React.FC = () => {
               editor.addCommand((monaco?.KeyMod?.CtrlCmd || 0) | (monaco?.KeyMod?.Shift || 0) | (monaco?.KeyCode?.KeyF || 0), () => {
                 setActivePanel("search");
               });
+              editor.addCommand((monaco?.KeyMod?.CtrlCmd || 0) | (monaco?.KeyMod?.Shift || 0) | (monaco?.KeyCode?.KeyH || 0), () => {
+                setActivePanel("search");
+                const bc = new BroadcastChannel('noka-ide-editor-actions');
+                bc.postMessage('replaceInFiles');
+                bc.close();
+              });
               editor.addCommand(
                 (monaco?.KeyMod?.Shift || 0) | (monaco?.KeyMod?.Alt || 0) | (monaco?.KeyCode?.KeyF || 0),
                 () => {
@@ -783,6 +796,18 @@ export const CodeEditor: React.FC = () => {
                     });
                   }
                   editor.focus();
+                } else if (data?.type === 'reload' && editorRef.current) {
+                  // If the file being reloaded is currently open in this editor
+                  if (activeFileIdRef.current === data.id && filesRef.current[data.id]) {
+                    const editor = editorRef.current;
+                    const model = editor.getModel();
+                    if (model) {
+                      const position = editor.getPosition();
+                      // Update the model content
+                      model.setValue(filesRef.current[data.id].content || '');
+                      if (position) editor.setPosition(position);
+                    }
+                  }
                 } else if (data?.type === 'close' && monacoRef.current) {
                   // Find and dispose the model for the closed file to clear history
                   const models = monacoRef.current.editor.getModels();

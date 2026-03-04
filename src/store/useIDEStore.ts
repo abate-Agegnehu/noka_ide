@@ -85,9 +85,12 @@ interface IDEState {
   runtimeProcessId?: string | null;
   runtimeConnected: boolean;
   recentProjects: RecentProject[];
+  previewUrl: string | null;
   searchResults: SearchResult[];
   isSearching: boolean;
   searchQuery: string;
+  globalReplaceQuery: string;
+  showGlobalReplace: boolean;
   searchOptions: {
     isCaseSensitive: boolean;
     isRegex: boolean;
@@ -97,8 +100,11 @@ interface IDEState {
 
   // Actions
   setSearchQuery: (query: string) => void;
+  setGlobalReplaceQuery: (query: string) => void;
+  toggleGlobalReplace: (v?: boolean) => void;
   setSearchOptions: (options: Partial<IDEState["searchOptions"]>) => void;
   performSearch: () => void;
+  replaceInFiles: (replacement: string, fileIds?: string[]) => void;
   addRecentProject: (name: string, path: string) => void;
   removeRecentProject: (path: string) => void;
   validateRecentProjects: () => Promise<void>;
@@ -143,6 +149,7 @@ interface IDEState {
   setRuntimeProjectPath: (p: string | null) => void;
   setRuntimeConnected: (v: boolean) => void;
   setRuntimeProcessId: (id: string | null) => void;
+  setPreviewUrl: (url: string | null) => void;
   detectProjectPath: (
     name: string,
     options?: { promptOnFail?: boolean },
@@ -246,9 +253,12 @@ export const useIDEStore = create<IDEState>()(
       runtimeProcessId: null,
       runtimeConnected: false,
       recentProjects: [],
+      previewUrl: null,
       searchResults: [],
       isSearching: false,
       searchQuery: "",
+      globalReplaceQuery: "",
+      showGlobalReplace: false,
       searchOptions: {
         isCaseSensitive: false,
         isRegex: false,
@@ -260,6 +270,9 @@ export const useIDEStore = create<IDEState>()(
         set({ searchQuery: query });
         get().performSearch();
       },
+
+      setGlobalReplaceQuery: (query) => set({ globalReplaceQuery: query }),
+      toggleGlobalReplace: (v) => set((state) => ({ showGlobalReplace: v !== undefined ? v : !state.showGlobalReplace })),
 
       setSearchOptions: (options) => {
         set((state) => ({
@@ -339,6 +352,63 @@ export const useIDEStore = create<IDEState>()(
 
           set({ searchResults: results, isSearching: false });
         }, 0);
+      },
+
+      replaceInFiles: (replacement, fileIds) => {
+        const { files, searchQuery, searchOptions, searchResults } = get();
+        if (!searchQuery) return;
+
+        const targets = fileIds 
+          ? searchResults.filter(r => fileIds.includes(r.fileId))
+          : searchResults;
+
+        if (targets.length === 0) return;
+
+        const newFiles = { ...files };
+        const updatedFileIds: string[] = [];
+
+        targets.forEach(result => {
+          const file = newFiles[result.fileId];
+          if (!file || !file.content) return;
+
+          let newContent = file.content;
+          if (searchOptions.isRegex) {
+            try {
+              const regex = new RegExp(searchQuery, searchOptions.isCaseSensitive ? 'g' : 'gi');
+              newContent = file.content.replace(regex, replacement);
+            } catch (e) {
+              console.error("Invalid regex for replace:", e);
+              return;
+            }
+          } else {
+            const query = searchOptions.isCaseSensitive ? searchQuery : searchQuery.toLowerCase();
+            if (searchOptions.isCaseSensitive) {
+              newContent = file.content.split(searchQuery).join(replacement);
+            } else {
+              // Case-insensitive non-regex replace is tricky with split/join
+              const regex = new RegExp(searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+              newContent = file.content.replace(regex, replacement);
+            }
+          }
+
+          if (newContent !== file.content) {
+            newFiles[result.fileId] = { ...file, content: newContent };
+            updatedFileIds.push(result.fileId);
+          }
+        });
+
+        if (updatedFileIds.length > 0) {
+          set({ files: newFiles });
+          // Re-run search to update results panel
+          get().performSearch();
+          
+          // Notify the editor to refresh if any updated files are open
+          const bc = new BroadcastChannel("noka-ide-editor-actions");
+          updatedFileIds.forEach(id => {
+            bc.postMessage({ type: "reload", id });
+          });
+          bc.close();
+        }
       },
 
       addRecentProject: (name, path) => {
@@ -624,6 +694,7 @@ export const useIDEStore = create<IDEState>()(
       setRuntimeProjectPath: (p) => set({ runtimeProjectPath: p }),
       setRuntimeConnected: (v) => set({ runtimeConnected: v }),
       setRuntimeProcessId: (id) => set({ runtimeProcessId: id }),
+      setPreviewUrl: (url) => set({ previewUrl: url }),
       detectProjectPath: async (name, options = {}) => {
         try {
           const res = await fetch("http://localhost:3005/api/detect-path", {

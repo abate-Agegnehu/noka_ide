@@ -1,6 +1,6 @@
 import React from 'react';
 import { useIDEStore } from '../store/useIDEStore';
-import { Search, CaseSensitive, Type, ChevronRight, ChevronDown, FileText } from 'lucide-react';
+import { Search, CaseSensitive, Type, ChevronRight, ChevronDown, FileText, Replace, CheckCheck, Trash2 } from 'lucide-react';
 import { cn } from '../utils/helpers';
 
 export const GlobalSearch: React.FC = () => {
@@ -11,19 +11,59 @@ export const GlobalSearch: React.FC = () => {
     setSearchOptions, 
     searchResults, 
     isSearching,
-    setActiveFile
+    setActiveFile,
+    globalReplaceQuery,
+    setGlobalReplaceQuery,
+    showGlobalReplace,
+    toggleGlobalReplace,
+    replaceInFiles
   } = useIDEStore();
 
   const [expandedFiles, setExpandedFiles] = React.useState<Record<string, boolean>>({});
+
+  React.useEffect(() => {
+    const bc = new BroadcastChannel('noka-ide-editor-actions');
+    bc.onmessage = (event) => {
+      if (event.data === 'replaceInFiles') {
+        toggleGlobalReplace(true);
+      }
+    };
+    return () => bc.close();
+  }, [toggleGlobalReplace]);
 
   const toggleFile = (id: string) => {
     setExpandedFiles(prev => ({ ...prev, [id]: prev[id] === false }));
   };
 
+  const handleReplaceAll = () => {
+    if (!searchQuery) return;
+    if (window.confirm(`Replace all occurrences of "${searchQuery}" with "${globalReplaceQuery}" in ${searchResults.length} files?`)) {
+      replaceInFiles(globalReplaceQuery);
+    }
+  };
+
+  const handleReplaceFile = (fileId: string, fileName: string) => {
+    if (window.confirm(`Replace all occurrences in ${fileName}?`)) {
+      replaceInFiles(globalReplaceQuery, [fileId]);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-slate-950 border-r border-white/5 w-full overflow-hidden">
       <div className="p-4 flex flex-col gap-3 flex-shrink-0">
-        <h2 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Search</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Search</h2>
+          <button
+            className={cn(
+              "p-1 rounded transition-colors",
+              showGlobalReplace ? "bg-blue-500/20 text-blue-400" : "text-slate-500 hover:text-slate-300"
+            )}
+            onClick={() => toggleGlobalReplace()}
+            title="Toggle Replace"
+          >
+            <Replace size={14} />
+          </button>
+        </div>
         
         <div className="flex flex-col gap-2">
           <div className="relative group">
@@ -58,6 +98,29 @@ export const GlobalSearch: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {showGlobalReplace && (
+            <div className="flex items-center gap-2">
+              <div className="relative group flex-1">
+                <Replace className="absolute left-2 top-2 text-slate-500" size={14} />
+                <input
+                  type="text"
+                  className="w-full bg-slate-900 border border-white/5 rounded px-8 py-1.5 text-xs text-slate-200 focus:border-blue-500/50 outline-none transition-colors"
+                  placeholder="Replace..."
+                  value={globalReplaceQuery}
+                  onChange={(e) => setGlobalReplaceQuery(e.target.value)}
+                />
+              </div>
+              <button
+                className="p-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed shadow-lg shadow-blue-500/10"
+                onClick={handleReplaceAll}
+                disabled={!searchQuery || searchResults.length === 0}
+                title="Replace All"
+              >
+                <CheckCheck size={14} />
+              </button>
+            </div>
+          )}
 
           <div className="flex flex-col gap-1.5">
             <div className="flex flex-col gap-1">
@@ -103,7 +166,21 @@ export const GlobalSearch: React.FC = () => {
                   {expandedFiles[result.fileId] === true ? <ChevronRight size={12} className="text-slate-500" /> : <ChevronDown size={12} className="text-slate-500" />}
                   <FileText size={14} className="text-blue-400 group-hover:text-blue-300" />
                   <span className="text-xs truncate font-medium">{result.fileName}</span>
-                  <span className="text-[10px] bg-white/5 text-slate-500 px-1.5 py-0.5 rounded-full ml-auto">{result.matches.length}</span>
+                  <div className="flex items-center gap-2 ml-auto">
+                    {showGlobalReplace && (
+                      <button
+                        className="p-1 hover:bg-white/10 rounded text-slate-500 hover:text-blue-400 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReplaceFile(result.fileId, result.fileName);
+                        }}
+                        title="Replace in this file"
+                      >
+                        <Replace size={12} />
+                      </button>
+                    )}
+                    <span className="text-[10px] bg-white/5 text-slate-500 px-1.5 py-0.5 rounded-full">{result.matches.length}</span>
+                  </div>
                 </button>
                 
                 {expandedFiles[result.fileId] !== true && (

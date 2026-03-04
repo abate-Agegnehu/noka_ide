@@ -762,10 +762,26 @@ export default function App() {
                       }}
                     >
                       <div className="flex items-center gap-2">
-                        <Search size={14} className="text-blue-400" />
-                        <span>Find in Files</span>
+                         <Search size={14} className="text-blue-400" />
+                         <span>Find in Files</span>
+                       </div>
+                       <span className="text-[10px] text-slate-500">Ctrl+Shift+F</span>
+                     </button>
+                    <button
+                      className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
+                      onClick={() => {
+                        const bc = new BroadcastChannel("noka-ide-editor-actions");
+                        bc.postMessage("replaceInFiles");
+                        bc.close();
+                        setActivePanel("search");
+                        setIsEditMenuOpen(false);
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Replace size={14} className="text-blue-400" />
+                        <span>Replace in Files</span>
                       </div>
-                      <span className="text-[10px] text-slate-500">Ctrl+Shift+F</span>
+                      <span className="text-[10px] text-slate-500">Ctrl+Shift+H</span>
                     </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
