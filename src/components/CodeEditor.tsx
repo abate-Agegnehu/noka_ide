@@ -5,7 +5,7 @@ import { X, Search, ChevronUp, ChevronDown, Type, CaseSensitive, Replace, Check,
 import { cn, getFileIcon } from '../utils/helpers';
 
 export const CodeEditor: React.FC = () => {
-  const { files, activeFileId, openFileIds, setActiveFile, closeFile, updateFileContent, formatOnSave, setFormatOnSave, installedExtensions, iconTheme } = useIDEStore();
+  const { files, activeFileId, openFileIds, setActiveFile, closeFile, updateFileContent, formatOnSave, setFormatOnSave, installedExtensions, iconTheme, setActivePanel } = useIDEStore();
   const activeFile = activeFileId ? files[activeFileId] : null;
   const [isFormatting, setIsFormatting] = React.useState(false);
   const [formatError, setFormatError] = React.useState<string | null>(null);
@@ -737,6 +737,9 @@ export const CodeEditor: React.FC = () => {
               editor.addCommand((monaco?.KeyMod?.CtrlCmd || 0) | (monaco?.KeyCode?.KeyH || 0), () => {
                 toggleFind(true);
               });
+              editor.addCommand((monaco?.KeyMod?.CtrlCmd || 0) | (monaco?.KeyMod?.Shift || 0) | (monaco?.KeyCode?.KeyF || 0), () => {
+                setActivePanel("search");
+              });
               editor.addCommand(
                 (monaco?.KeyMod?.Shift || 0) | (monaco?.KeyMod?.Alt || 0) | (monaco?.KeyCode?.KeyF || 0),
                 () => {
@@ -767,6 +770,19 @@ export const CodeEditor: React.FC = () => {
                   toggleFind();
                 } else if (data === 'replace' && editorRef.current) {
                   toggleFind(true);
+                } else if (data?.type === 'gotoLine' && editorRef.current) {
+                  const editor = editorRef.current;
+                  editor.revealLineInCenter(data.line);
+                  editor.setPosition({ lineNumber: data.line, column: data.start || 1 });
+                  if (data.length) {
+                    editor.setSelection({
+                      startLineNumber: data.line,
+                      startColumn: data.start,
+                      endLineNumber: data.line,
+                      endColumn: data.start + data.length
+                    });
+                  }
+                  editor.focus();
                 } else if (data?.type === 'close' && monacoRef.current) {
                   // Find and dispose the model for the closed file to clear history
                   const models = monacoRef.current.editor.getModels();

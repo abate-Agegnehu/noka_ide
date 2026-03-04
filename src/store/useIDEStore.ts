@@ -29,7 +29,21 @@ export interface FileNode {
   isOpen?: boolean;
 }
 
-export type ActivePanel = "explorer" | "extensions";
+export type ActivePanel = "explorer" | "extensions" | "search";
+
+export interface SearchMatch {
+  line: number;
+  text: string;
+  preview: string;
+  start: number;
+  length: number;
+}
+
+export interface SearchResult {
+  fileId: string;
+  fileName: string;
+  matches: SearchMatch[];
+}
 
 export interface ExtensionItem {
   id: string;
@@ -71,8 +85,20 @@ interface IDEState {
   runtimeProcessId?: string | null;
   runtimeConnected: boolean;
   recentProjects: RecentProject[];
+  searchResults: SearchResult[];
+  isSearching: boolean;
+  searchQuery: string;
+  searchOptions: {
+    isCaseSensitive: boolean;
+    isRegex: boolean;
+    include: string;
+    exclude: string;
+  };
 
   // Actions
+  setSearchQuery: (query: string) => void;
+  setSearchOptions: (options: Partial<IDEState["searchOptions"]>) => void;
+  performSearch: () => void;
   addRecentProject: (name: string, path: string) => void;
   removeRecentProject: (path: string) => void;
   validateRecentProjects: () => Promise<void>;
@@ -220,6 +246,100 @@ export const useIDEStore = create<IDEState>()(
       runtimeProcessId: null,
       runtimeConnected: false,
       recentProjects: [],
+      searchResults: [],
+      isSearching: false,
+      searchQuery: "",
+      searchOptions: {
+        isCaseSensitive: false,
+        isRegex: false,
+        include: "",
+        exclude: "",
+      },
+
+      setSearchQuery: (query) => {
+        set({ searchQuery: query });
+        get().performSearch();
+      },
+
+      setSearchOptions: (options) => {
+        set((state) => ({
+          searchOptions: { ...state.searchOptions, ...options },
+        }));
+        get().performSearch();
+      },
+
+      performSearch: () => {
+        const { searchQuery, searchOptions, files } = get();
+        if (!searchQuery || searchQuery.trim().length === 0) {
+          set({ searchResults: [], isSearching: false });
+          return;
+        }
+
+        set({ isSearching: true });
+
+        // Run search asynchronously to avoid blocking UI
+        setTimeout(() => {
+          const results: SearchResult[] = [];
+          const query = searchOptions.isCaseSensitive ? searchQuery : searchQuery.toLowerCase();
+          
+          Object.values(files).forEach(file => {
+            if (file.type !== 'file' || !file.content) return;
+            
+            // Apply include/exclude filters
+            const path = file.name; // In a real IDE we'd have full path, here we use name
+            if (searchOptions.include && !path.includes(searchOptions.include)) return;
+            if (searchOptions.exclude && path.includes(searchOptions.exclude)) return;
+
+            const matches: SearchMatch[] = [];
+            const lines = file.content.split('\n');
+            
+            lines.forEach((lineText, index) => {
+              const textToSearch = searchOptions.isCaseSensitive ? lineText : lineText.toLowerCase();
+              let matchIdx = -1;
+              
+              if (searchOptions.isRegex) {
+                try {
+                  const regex = new RegExp(searchQuery, searchOptions.isCaseSensitive ? 'g' : 'gi');
+                  let m;
+                  while ((m = regex.exec(lineText)) !== null) {
+                    matches.push({
+                      line: index + 1,
+                      text: lineText,
+                      preview: lineText.trim(),
+                      start: m.index,
+                      length: m[0].length
+                    });
+                  }
+                } catch (e) {
+                  // Invalid regex, ignore
+                }
+              } else {
+                let startPos = 0;
+                while ((matchIdx = textToSearch.indexOf(query, startPos)) !== -1) {
+                  matches.push({
+                    line: index + 1,
+                    text: lineText,
+                    preview: lineText.trim(),
+                    start: matchIdx,
+                    length: searchQuery.length
+                  });
+                  startPos = matchIdx + searchQuery.length;
+                }
+              }
+            });
+
+            if (matches.length > 0) {
+              results.push({
+                fileId: file.id,
+                fileName: file.name,
+                matches
+              });
+            }
+          });
+
+          set({ searchResults: results, isSearching: false });
+        }, 0);
+      },
 
       addRecentProject: (name, path) => {
         set((state) => {

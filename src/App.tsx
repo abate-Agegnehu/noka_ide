@@ -1,6 +1,7 @@
 import React, { useState, useRef,useEffect } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Extensions } from "./components/Extensions";
+import { GlobalSearch } from "./components/GlobalSearch";
 import { CodeEditor } from "./components/CodeEditor";
 import { Chat } from "./components/Chat";
 import { Terminal } from "./components/Terminal";
@@ -752,7 +753,20 @@ export default function App() {
                          <span>Find</span>
                        </div>
                        <span className="text-[10px] text-slate-500">Ctrl+F</span>
-                     </button>
+                    </button>
+                    <button
+                      className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
+                      onClick={() => {
+                        setActivePanel("search");
+                        setIsEditMenuOpen(false);
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Search size={14} className="text-blue-400" />
+                        <span>Find in Files</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500">Ctrl+Shift+F</span>
+                    </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
                       onClick={() => {
@@ -861,7 +875,13 @@ export default function App() {
             <Box size={20} />
           </button>
           <button
-            className="p-2 text-slate-500 hover:text-slate-300 transition-colors"
+            className={cn(
+              "p-2 transition-colors",
+              activePanel === "search"
+                ? "text-blue-400 bg-blue-500/10 rounded-lg"
+                : "text-slate-500 hover:text-slate-300",
+            )}
+            onClick={() => setActivePanel("search")}
             title="Search"
           >
             <Search size={20} />
@@ -899,7 +919,13 @@ export default function App() {
         </aside>
 
         {/* Sidebar */}
-        {activePanel === "explorer" ? <Sidebar /> : <Extensions />}
+        {activePanel === "explorer" ? (
+          <Sidebar />
+        ) : activePanel === "search" ? (
+          <GlobalSearch />
+        ) : (
+          <Extensions />
+        )}
 
         {/* Editor & Terminal Area */}
         <main className="flex-1 flex flex-col min-w-0">
