@@ -372,9 +372,10 @@ export const CodeEditor: React.FC = () => {
       <div className="flex-1 relative">
         <Editor
           height="100%"
+          path={activeFile.id}
           language={activeFile.language || 'javascript'}
           theme="vs-dark"
-          value={activeFile.content}
+          defaultValue={activeFile.content}
           onChange={(value) => updateFileContent(activeFile.id, value || '')}
           onMount={(editor: any, monaco: any) => {
             try {
@@ -393,6 +394,27 @@ export const CodeEditor: React.FC = () => {
                   }
                 }
               );
+
+              // Add listener for custom undo event
+              const bc = new BroadcastChannel('noka-ide-editor-actions');
+              bc.onmessage = (event) => {
+                const data = event.data;
+                if (data === 'undo' && editorRef.current) {
+                  editorRef.current.trigger('menu', 'undo', null);
+                } else if (data === 'redo' && editorRef.current) {
+                  editorRef.current.trigger('menu', 'redo', null);
+                } else if (data === 'find' && editorRef.current) {
+                  editorRef.current.trigger('menu', 'actions.find', null);
+                } else if (data?.type === 'close' && monacoRef.current) {
+                  // Find and dispose the model for the closed file to clear history
+                  const models = monacoRef.current.editor.getModels();
+                  const modelToDispose = models.find((m: any) => m.uri.path === `/${data.id}`);
+                  if (modelToDispose) {
+                    modelToDispose.dispose();
+                  }
+                }
+              };
+              disposablesRef.current.push({ dispose: () => bc.close() });
             } catch {}
             editorRef.current = editor;
             monacoRef.current = monaco;

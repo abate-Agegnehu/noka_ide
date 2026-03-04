@@ -363,6 +363,11 @@ export const useIDEStore = create<IDEState>()(
       },
 
       closeFile: (id) => {
+        // Broadcast to clear Monaco model for this file to reset undo history
+        const bc = new BroadcastChannel("noka-ide-editor-actions");
+        bc.postMessage({ type: "close", id });
+        bc.close();
+
         set((state) => {
           const newOpenIds = state.openFileIds.filter((fid) => fid !== id);
           let newActiveId = state.activeFileId;

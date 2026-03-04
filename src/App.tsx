@@ -27,6 +27,12 @@ import {
   FolderMinus,
   MinusSquare,
   LogOut,
+  Undo2,
+  Redo2,
+  Scissors,
+  Copy,
+  Clipboard,
+  SearchCode,
   X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -224,9 +230,25 @@ export default function App() {
     }
   };
   const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
+  const [isEditMenuOpen, setIsEditMenuOpen] = useState(false);
   const fileMenuRef = useRef<HTMLDivElement>(null);
+  const editMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUndo = () => {
+    const bc = new BroadcastChannel("noka-ide-editor-actions");
+    bc.postMessage("undo");
+    bc.close();
+    setIsEditMenuOpen(false);
+  };
+
+  const handleRedo = () => {
+    const bc = new BroadcastChannel("noka-ide-editor-actions");
+    bc.postMessage("redo");
+    bc.close();
+    setIsEditMenuOpen(false);
+  };
 
   const firstRoot = Object.values(files).find((f) => f.parentId === null);
 
@@ -438,13 +460,19 @@ export default function App() {
   };
 
   // Close menu when clicking outside
-  React.useEffect(() => {
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
         fileMenuRef.current &&
         !fileMenuRef.current.contains(event.target as Node)
       ) {
         setIsFileMenuOpen(false);
+      }
+      if (
+        editMenuRef.current &&
+        !editMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsEditMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -617,9 +645,96 @@ export default function App() {
               </AnimatePresence>
             </div>
             <span className="mx-1 opacity-20">/</span>
-            <span className="hover:text-slate-200 cursor-pointer transition-colors px-2 py-1">
-              Edit
-            </span>
+            <div className="relative" ref={editMenuRef}>
+              <span
+                className={cn(
+                  "hover:text-slate-200 cursor-pointer transition-colors px-2 py-1 rounded",
+                  isEditMenuOpen && "text-slate-200 bg-white/5",
+                )}
+                onClick={() => setIsEditMenuOpen(!isEditMenuOpen)}
+              >
+                Edit
+              </span>
+
+              <AnimatePresence>
+                {isEditMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 5 }}
+                    className="absolute top-full left-0 mt-1 w-48 bg-slate-900 border border-white/10 rounded-lg shadow-2xl py-1 z-[100]"
+                  >
+                    <button
+                      className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
+                      onClick={handleUndo}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Undo2 size={14} className="text-blue-400" />
+                        <span>Undo</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500">Ctrl+Z</span>
+                    </button>
+                    <button
+                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
+                       onClick={handleRedo}
+                     >
+                       <div className="flex items-center gap-2">
+                         <Redo2 size={14} className="text-blue-400" />
+                         <span>Redo</span>
+                       </div>
+                       <span className="text-[10px] text-slate-500">Ctrl+Y</span>
+                     </button>
+                     <div className="h-px bg-white/5 my-1" />
+                     <button
+                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
+                       onClick={() => setIsEditMenuOpen(false)}
+                     >
+                       <div className="flex items-center gap-2 text-slate-400">
+                         <Scissors size={14} />
+                         <span>Cut</span>
+                       </div>
+                       <span className="text-[10px] text-slate-600">Ctrl+X</span>
+                     </button>
+                     <button
+                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
+                       onClick={() => setIsEditMenuOpen(false)}
+                     >
+                       <div className="flex items-center gap-2 text-slate-400">
+                         <Copy size={14} />
+                         <span>Copy</span>
+                       </div>
+                       <span className="text-[10px] text-slate-600">Ctrl+C</span>
+                     </button>
+                     <button
+                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
+                       onClick={() => setIsEditMenuOpen(false)}
+                     >
+                       <div className="flex items-center gap-2 text-slate-400">
+                         <Clipboard size={14} />
+                         <span>Paste</span>
+                       </div>
+                       <span className="text-[10px] text-slate-600">Ctrl+V</span>
+                     </button>
+                     <div className="h-px bg-white/5 my-1" />
+                     <button
+                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
+                       onClick={() => {
+                         const bc = new BroadcastChannel("noka-ide-editor-actions");
+                         bc.postMessage("find");
+                         bc.close();
+                         setIsEditMenuOpen(false);
+                       }}
+                     >
+                       <div className="flex items-center gap-2">
+                         <SearchCode size={14} className="text-blue-400" />
+                         <span>Find</span>
+                       </div>
+                       <span className="text-[10px] text-slate-500">Ctrl+F</span>
+                     </button>
+                   </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
             <span className="mx-1 opacity-20">/</span>
             <span className="hover:text-slate-200 cursor-pointer transition-colors px-2 py-1">
               View
