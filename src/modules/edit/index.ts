@@ -38,7 +38,7 @@ export const find = () => {
   bc.close();
 };
 
-export const replace = () => {
+export const replaceText = () => {
   const bc = new BroadcastChannel(EDITOR_CHANNEL);
   bc.postMessage("replace");
   bc.close();

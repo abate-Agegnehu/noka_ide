@@ -1,4 +1,4 @@
-import React, { useState, useRef,useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Extensions } from "./components/Extensions";
 import { GlobalSearch } from "./components/GlobalSearch";
@@ -55,21 +55,12 @@ export default function App() {
     setRuntimeProjectPath,
     addTerminalLog,
     setRunning,
-    createFile,
-    createFolder,
-    importFiles,
-    importSingleFile,
     isTerminalOpen,
     toggleTerminal,
     isRunning,
     addTerminal,
-    activeTerminalId,
-    setActiveTerminal,
     recentProjects,
-    addRecentProject,
     validateRecentProjects,
-    loadProject,
-    closeFolder,
   } = useIDEStore();
 
   useEffect(() => {
@@ -77,7 +68,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const { runtimeProjectPath, files, addRecentProject } = useIDEStore.getState();
+    const { runtimeProjectPath, files, addRecentProject } =
+      useIDEStore.getState();
     if (runtimeProjectPath) {
       const rootFolder = Object.values(files).find((f) => f.parentId === null);
       if (rootFolder) {
@@ -198,34 +190,6 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
-  const handleUndo = () => {
-    const bc = new BroadcastChannel("noka-ide-editor-actions");
-    bc.postMessage("undo");
-    bc.close();
-    setIsEditMenuOpen(false);
-  };
-
-  const handleRedo = () => {
-    const bc = new BroadcastChannel("noka-ide-editor-actions");
-    bc.postMessage("redo");
-    bc.close();
-    setIsEditMenuOpen(false);
-  };
-
-  const handleCut = () => {
-    const bc = new BroadcastChannel("noka-ide-editor-actions");
-    bc.postMessage("cut");
-    bc.close();
-    setIsEditMenuOpen(false);
-  };
-
-  const handleCopy = () => {
-    const bc = new BroadcastChannel("noka-ide-editor-actions");
-    bc.postMessage("copy");
-    bc.close();
-    setIsEditMenuOpen(false);
-  };
-
   const firstRoot = Object.values(files).find((f) => f.parentId === null);
 
   const handleFileChange = async (
@@ -317,20 +281,26 @@ export default function App() {
                   >
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors"
-                      onClick={() => { fileModule.createNewWindow(); setIsFileMenuOpen(false); }}
+                      onClick={() => {
+                        fileModule.createNewWindow();
+                        setIsFileMenuOpen(false);
+                      }}
                     >
                       <ExternalLink size={14} className="text-blue-400" />
                       <span>New Window</span>
                     </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors group relative"
-                      onMouseEnter={() => setIsRecentMenuOpen(true)}
+                      onMouseOver={() => setIsRecentMenuOpen(true)}
                       onMouseLeave={() => setIsRecentMenuOpen(false)}
                     >
                       <History size={14} className="text-blue-400" />
                       <span>Open Recent</span>
-                      <ChevronRight size={14} className="ml-auto text-slate-500" />
-                      
+                      <ChevronRight
+                        size={14}
+                        className="ml-auto text-slate-500"
+                      />
+
                       {isRecentMenuOpen && (
                         <div className="absolute left-full top-0 ml-1 w-64 bg-slate-900 border border-white/10 rounded-lg shadow-2xl py-1 z-[110]">
                           {recentProjects.length > 0 ? (
@@ -351,7 +321,9 @@ export default function App() {
                                   {project.path}
                                 </span>
                                 <span className="text-[8px] text-slate-600">
-                                  {new Date(project.lastOpened).toLocaleString()}
+                                  {new Date(
+                                    project.lastOpened,
+                                  ).toLocaleString()}
                                 </span>
                               </button>
                             ))
@@ -366,14 +338,20 @@ export default function App() {
                     <div className="h-px bg-white/5 my-1" />
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors"
-                      onClick={() => { fileModule.createNewFile(firstRoot?.id || null); setIsFileMenuOpen(false); }}
+                      onClick={() => {
+                        fileModule.createNewFile(firstRoot?.id || null);
+                        setIsFileMenuOpen(false);
+                      }}
                     >
                       <FilePlus size={14} className="text-blue-400" />
                       <span>New File</span>
                     </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors"
-                      onClick={() => { fileModule.createNewFolder(firstRoot?.id || null); setIsFileMenuOpen(false); }}
+                      onClick={() => {
+                        fileModule.createNewFolder(firstRoot?.id || null);
+                        setIsFileMenuOpen(false);
+                      }}
                     >
                       <FolderPlus size={14} className="text-blue-400" />
                       <span>New Folder</span>
@@ -381,14 +359,19 @@ export default function App() {
                     <div className="h-px bg-white/5 my-1" />
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors"
-                      onClick={() => { fileModule.openFile(fileInputRef, setIsFileMenuOpen); }}
+                      onClick={() => {
+                        fileModule.openFile(fileInputRef, setIsFileMenuOpen);
+                      }}
                     >
                       <FileCode size={14} className="text-purple-400" />
                       <span>Open File...</span>
                     </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors"
-                      onClick={() => { fileModule.openFolder(folderInputRef); setIsFileMenuOpen(false); }}
+                      onClick={() => {
+                        fileModule.openFolder(folderInputRef);
+                        setIsFileMenuOpen(false);
+                      }}
                     >
                       <FolderOpen size={14} className="text-purple-400" />
                       <span>Open Folder...</span>
@@ -450,7 +433,10 @@ export default function App() {
                   >
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                      onClick={() => { editModule.undo(); setIsEditMenuOpen(false); }}
+                      onClick={() => {
+                        editModule.undo();
+                        setIsEditMenuOpen(false);
+                      }}
                     >
                       <div className="flex items-center gap-2">
                         <Undo2 size={14} className="text-blue-400" />
@@ -459,19 +445,25 @@ export default function App() {
                       <span className="text-[10px] text-slate-500">Ctrl+Z</span>
                     </button>
                     <button
-                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                       onClick={() => { editModule.redo(); setIsEditMenuOpen(false); }}
-                     >
-                       <div className="flex items-center gap-2">
-                         <Redo2 size={14} className="text-blue-400" />
-                         <span>Redo</span>
-                       </div>
-                       <span className="text-[10px] text-slate-500">Ctrl+Y</span>
+                      className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
+                      onClick={() => {
+                        editModule.redo();
+                        setIsEditMenuOpen(false);
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Redo2 size={14} className="text-blue-400" />
+                        <span>Redo</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500">Ctrl+Y</span>
                     </button>
                     <div className="h-px bg-white/5 my-1" />
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                      onClick={() => { editModule.cut(); setIsEditMenuOpen(false); }}
+                      onClick={() => {
+                        editModule.cut();
+                        setIsEditMenuOpen(false);
+                      }}
                     >
                       <div className="flex items-center gap-2">
                         <Scissors size={14} className="text-blue-400" />
@@ -481,7 +473,10 @@ export default function App() {
                     </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                      onClick={() => { editModule.copy(); setIsEditMenuOpen(false); }}
+                      onClick={() => {
+                        editModule.copy();
+                        setIsEditMenuOpen(false);
+                      }}
                     >
                       <div className="flex items-center gap-2 text-slate-200">
                         <Copy size={14} className="text-blue-400" />
@@ -491,7 +486,10 @@ export default function App() {
                     </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                      onClick={() => { editModule.paste(); setIsEditMenuOpen(false); }}
+                      onClick={() => {
+                        editModule.paste();
+                        setIsEditMenuOpen(false);
+                      }}
                     >
                       <div className="flex items-center gap-2 text-slate-200">
                         <Clipboard size={14} className="text-blue-400" />
@@ -502,45 +500,61 @@ export default function App() {
                     <div className="h-px bg-white/5 my-1" />
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                      onClick={() => { editModule.find(); setIsEditMenuOpen(false); }}
-                     >
-                       <div className="flex items-center gap-2">
-                         <SearchCode size={14} className="text-blue-400" />
-                         <span>Find</span>
-                       </div>
-                       <span className="text-[10px] text-slate-500">Ctrl+F</span>
+                      onClick={() => {
+                        editModule.find();
+                        setIsEditMenuOpen(false);
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <SearchCode size={14} className="text-blue-400" />
+                        <span>Find</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500">Ctrl+F</span>
                     </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                      onClick={() => { editModule.findInFiles(); setIsEditMenuOpen(false); }}
+                      onClick={() => {
+                        editModule.findInFiles();
+                        setIsEditMenuOpen(false);
+                      }}
                     >
                       <div className="flex items-center gap-2">
-                          <Search size={14} className="text-blue-400" />
-                          <span>Find in Files</span>
-                        </div>
-                        <span className="text-[10px] text-slate-500">Ctrl+Shift+F</span>
-                      </button>
+                        <Search size={14} className="text-blue-400" />
+                        <span>Find in Files</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500">
+                        Ctrl+Shift+F
+                      </span>
+                    </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                      onClick={() => { editModule.replaceInFiles(); setIsEditMenuOpen(false); }}
+                      onClick={() => {
+                        editModule.replaceInFiles();
+                        setIsEditMenuOpen(false);
+                      }}
                     >
                       <div className="flex items-center gap-2">
                         <Replace size={14} className="text-blue-400" />
                         <span>Replace in Files</span>
                       </div>
-                      <span className="text-[10px] text-slate-500">Ctrl+Shift+H</span>
+                      <span className="text-[10px] text-slate-500">
+                        Ctrl+Shift+H
+                      </span>
                     </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                      onClick={() => { editModule.replace(); setIsEditMenuOpen(false); }}
-                     >
-                       <div className="flex items-center gap-2">
-                          <Replace size={14} className="text-blue-400" />
-                          <span>Replace</span>
-                       </div>
-                       <span className="text-[10px] text-slate-500">Ctrl+H</span>
-                     </button>
-                   </motion.div>
+                      onClick={() => {
+                        editModule.replaceText();
+                        setIsEditMenuOpen(false);
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Replace size={14} className="text-blue-400" />
+                        <span>Replace</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500">Ctrl+H</span>
+                    </button>
+                  </motion.div>
                 )}
               </AnimatePresence>
             </div>

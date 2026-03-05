@@ -32,9 +32,13 @@ export const createNewWindow = () => {
 };
 
 export const openRecentProject = async (project: { name: string; path: string }) => {
-  const { loadProject, addRecentProject } = useIDEStore.getState();
-  await loadProject(project.path);
-  addRecentProject(project.name, project.path);
+  try {
+    const { loadProject, addRecentProject } = useIDEStore.getState();
+    await loadProject(project.path);
+    addRecentProject(project.name, project.path);
+  } catch (error) {
+    console.error("Error opening recent project:", error);
+  }
 };
 
 export const createNewFile = (parentId: string | null) => {
