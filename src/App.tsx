@@ -40,6 +40,8 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "./utils/helpers";
 import { v4 as uuidv4 } from "uuid";
+import * as fileModule from "./modules/file";
+import * as editModule from "./modules/edit";
 
 export default function App() {
   const {
@@ -85,48 +87,6 @@ export default function App() {
   }, [runtimeProjectPath]);
 
   const [isRecentMenuOpen, setIsRecentMenuOpen] = useState(false);
-
-  const handleOpenRecent = async (project: { name: string; path: string }) => {
-    await loadProject(project.path);
-    addRecentProject(project.name, project.path);
-    setIsFileMenuOpen(false);
-    setIsRecentMenuOpen(false);
-  };
-
-  const handleCloseFolder = () => {
-    if (window.confirm("Are you sure you want to close the folder? Any unsaved changes will be lost.")) {
-      closeFolder();
-      setIsFileMenuOpen(false);
-    }
-  };
-
-  const handleCloseWindow = () => {
-    if (window.confirm("Are you sure you want to close this window? Any unsaved changes will be lost.")) {
-      window.close();
-      setIsFileMenuOpen(false);
-    }
-  };
-
-  const handleExit = async () => {
-    if (window.confirm("Are you sure you want to exit? This will close all windows and stop all background processes.")) {
-      try {
-        // Broadcast to other windows to close
-        const bc = new BroadcastChannel("noka-ide-channel");
-        bc.postMessage("exit");
-        bc.close();
-
-        // Shutdown backend
-        await fetch("http://localhost:3005/api/shutdown", { method: "POST" });
-        
-        // Close self
-        window.close();
-      } catch (e) {
-        console.error("Exit error:", e);
-        // Fallback for window.close() if it's the only window
-        window.location.href = "about:blank";
-      }
-    }
-  };
 
   useEffect(() => {
     const bc = new BroadcastChannel("noka-ide-channel");
@@ -266,220 +226,20 @@ export default function App() {
     setIsEditMenuOpen(false);
   };
 
-  const handlePaste = () => {
-    const bc = new BroadcastChannel("noka-ide-editor-actions");
-    bc.postMessage("paste");
-    bc.close();
-    setIsEditMenuOpen(false);
-  };
-
   const firstRoot = Object.values(files).find((f) => f.parentId === null);
-
-  const handleOpenFile = () => {
-    fileInputRef.current?.click();
-    setIsFileMenuOpen(false);
-  };
-
-  const handleOpenFolder = async () => {
-    if ("showDirectoryPicker" in window) {
-      try {
-        // @ts-ignore
-        const directoryHandle = await window.showDirectoryPicker();
-        const newFiles: Record<string, FileNode> = {};
-
-        const rootId = uuidv4();
-        newFiles[rootId] = {
-          id: rootId,
-          name: directoryHandle.name,
-          type: "folder",
-          parentId: null,
-          isOpen: true,
-        };
-
-        const IGNORED_FOLDERS = [
-          "node_modules",
-          ".git",
-          "dist",
-          "build",
-          ".next",
-          ".cache",
-        ];
-
-        const readDirectory = async (handle: any, parentId: string) => {
-          for await (const entry of handle.values()) {
-            if (IGNORED_FOLDERS.includes(entry.name)) continue;
-
-            const id = uuidv4();
-            if (entry.kind === "file") {
-              const file = await entry.getFile();
-              const content = await file.text();
-              const extension = entry.name.split(".").pop() || "text";
-              const languageMap: Record<string, string> = {
-                js: "javascript",
-                ts: "typescript",
-                tsx: "typescript",
-                jsx: "javascript",
-                html: "html",
-                css: "css",
-                json: "json",
-                py: "python",
-                md: "markdown",
-              };
-
-              newFiles[id] = {
-                id,
-                name: entry.name,
-                type: "file",
-                parentId,
-                content,
-                language: languageMap[extension] || "text",
-              };
-            } else if (entry.kind === "directory") {
-              newFiles[id] = {
-                id,
-                name: entry.name,
-                type: "folder",
-                parentId,
-                isOpen: false,
-              };
-              await readDirectory(entry, id);
-            }
-          }
-        };
-
-        await readDirectory(directoryHandle, rootId);
-        importFiles(newFiles);
-
-        // Automatically detect project path for terminal/runtime
-        const rootFolder = Object.values(newFiles).find(
-          (f) => f.parentId === null,
-        );
-        if (rootFolder) {
-          import("./store/useIDEStore").then(({ useIDEStore }) => {
-            useIDEStore.getState().detectProjectPath(rootFolder.name);
-          });
-        }
-      } catch (err) {
-        if ((err as Error).name !== "AbortError") {
-          console.error("Error opening directory:", err);
-          folderInputRef.current?.click();
-        }
-      }
-    } else {
-      folderInputRef.current?.click();
-    }
-    setIsFileMenuOpen(false);
-  };
 
   const handleFileChange = async (
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
-    const fileList = event.target.files;
-    if (!fileList || fileList.length === 0) return;
-
-    for (let i = 0; i < fileList.length; i++) {
-      const file = fileList[i];
-      const content = await file.text();
-      importSingleFile(file.name, content, firstRoot?.id || null);
-    }
+    await fileModule.handleFileChange(event, firstRoot?.id || null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleFolderChange = async (
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
-    const fileList = event.target.files;
-    if (!fileList || fileList.length === 0) return;
-
-    const newFiles: Record<string, FileNode> = {};
-    const rootFolderName =
-      fileList[0].webkitRelativePath.split("/")[0] || "imported-project";
-    const rootId = uuidv4();
-
-    newFiles[rootId] = {
-      id: rootId,
-      name: rootFolderName,
-      type: "folder",
-      parentId: null,
-      isOpen: true,
-    };
-
-    const folderCache: Record<string, string> = { "": rootId };
-    const IGNORED_FOLDERS = [
-      "node_modules",
-      ".git",
-      "dist",
-      "build",
-      ".next",
-      ".cache",
-    ];
-
-    for (let i = 0; i < fileList.length; i++) {
-      const file = fileList[i];
-      const pathParts = file.webkitRelativePath.split("/");
-
-      // Skip files in ignored folders
-      if (pathParts.some((part) => IGNORED_FOLDERS.includes(part))) continue;
-
-      pathParts.shift();
-
-      let currentParentId = rootId;
-      let currentPath = "";
-
-      for (let j = 0; j < pathParts.length - 1; j++) {
-        const folderName = pathParts[j];
-        currentPath += (currentPath ? "/" : "") + folderName;
-
-        if (!folderCache[currentPath]) {
-          const folderId = uuidv4();
-          newFiles[folderId] = {
-            id: folderId,
-            name: folderName,
-            type: "folder",
-            parentId: currentParentId,
-            isOpen: false,
-          };
-          folderCache[currentPath] = folderId;
-        }
-        currentParentId = folderCache[currentPath];
-      }
-
-      const fileName = pathParts[pathParts.length - 1];
-      const content = await file.text();
-      const extension = fileName.split(".").pop() || "text";
-      const languageMap: Record<string, string> = {
-        js: "javascript",
-        ts: "typescript",
-        tsx: "typescript",
-        jsx: "javascript",
-        html: "html",
-        css: "css",
-        json: "json",
-        py: "python",
-        md: "markdown",
-      };
-
-      const fileId = uuidv4();
-      newFiles[fileId] = {
-        id: fileId,
-        name: fileName,
-        type: "file",
-        parentId: currentParentId,
-        content,
-        language: languageMap[extension] || "text",
-      };
-    }
-
-    importFiles(newFiles);
+    await fileModule.handleFolderChange(event);
     if (folderInputRef.current) folderInputRef.current.value = "";
-
-    // Automatically detect project path for terminal/runtime
-    const rootFolder = Object.values(newFiles).find((f) => f.parentId === null);
-    if (rootFolder) {
-      import("./store/useIDEStore").then(({ useIDEStore }) => {
-        useIDEStore.getState().detectProjectPath(rootFolder.name);
-      });
-    }
   };
 
   // Close menu when clicking outside
@@ -557,13 +317,7 @@ export default function App() {
                   >
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors"
-                      onClick={() => {
-                        window.open(
-                          window.location.origin + "?session=" + uuidv4(),
-                          "_blank",
-                        );
-                        setIsFileMenuOpen(false);
-                      }}
+                      onClick={() => { fileModule.createNewWindow(); setIsFileMenuOpen(false); }}
                     >
                       <ExternalLink size={14} className="text-blue-400" />
                       <span>New Window</span>
@@ -584,7 +338,11 @@ export default function App() {
                               <button
                                 key={project.path}
                                 className="w-full text-left px-3 py-2 hover:bg-white/5 flex flex-col gap-0.5 transition-colors"
-                                onClick={() => handleOpenRecent(project)}
+                                onClick={async () => {
+                                  await fileModule.openRecentProject(project);
+                                  setIsFileMenuOpen(false);
+                                  setIsRecentMenuOpen(false);
+                                }}
                               >
                                 <span className="text-[11px] font-medium text-slate-200 truncate">
                                   {project.name}
@@ -608,20 +366,14 @@ export default function App() {
                     <div className="h-px bg-white/5 my-1" />
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors"
-                      onClick={() => {
-                        createFile("new-file.js", firstRoot?.id || null);
-                        setIsFileMenuOpen(false);
-                      }}
+                      onClick={() => { fileModule.createNewFile(firstRoot?.id || null); setIsFileMenuOpen(false); }}
                     >
                       <FilePlus size={14} className="text-blue-400" />
                       <span>New File</span>
                     </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors"
-                      onClick={() => {
-                        createFolder("new-folder", firstRoot?.id || null);
-                        setIsFileMenuOpen(false);
-                      }}
+                      onClick={() => { fileModule.createNewFolder(firstRoot?.id || null); setIsFileMenuOpen(false); }}
                     >
                       <FolderPlus size={14} className="text-blue-400" />
                       <span>New Folder</span>
@@ -629,14 +381,14 @@ export default function App() {
                     <div className="h-px bg-white/5 my-1" />
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors"
-                      onClick={handleOpenFile}
+                      onClick={() => { fileModule.openFile(fileInputRef, setIsFileMenuOpen); }}
                     >
                       <FileCode size={14} className="text-purple-400" />
                       <span>Open File...</span>
                     </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors"
-                      onClick={handleOpenFolder}
+                      onClick={() => { fileModule.openFolder(folderInputRef); setIsFileMenuOpen(false); }}
                     >
                       <FolderOpen size={14} className="text-purple-400" />
                       <span>Open Folder...</span>
@@ -644,21 +396,30 @@ export default function App() {
                     <div className="h-px bg-white/5 my-1" />
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors text-red-400 hover:text-red-300"
-                      onClick={handleCloseFolder}
+                      onClick={() => {
+                        fileModule.closeFolder();
+                        setIsFileMenuOpen(false);
+                      }}
                     >
                       <FolderMinus size={14} />
                       <span>Close Folder</span>
                     </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors text-red-400 hover:text-red-300"
-                      onClick={handleCloseWindow}
+                      onClick={() => {
+                        fileModule.closeWindow();
+                        setIsFileMenuOpen(false);
+                      }}
                     >
                       <MinusSquare size={14} />
                       <span>Close Window</span>
                     </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center gap-2 transition-colors text-red-400 hover:text-red-300 font-bold"
-                      onClick={handleExit}
+                      onClick={() => {
+                        fileModule.exit();
+                        setIsFileMenuOpen(false);
+                      }}
                     >
                       <LogOut size={14} />
                       <span>Exit</span>
@@ -689,7 +450,7 @@ export default function App() {
                   >
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                      onClick={handleUndo}
+                      onClick={() => { editModule.undo(); setIsEditMenuOpen(false); }}
                     >
                       <div className="flex items-center gap-2">
                         <Undo2 size={14} className="text-blue-400" />
@@ -699,7 +460,7 @@ export default function App() {
                     </button>
                     <button
                        className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                       onClick={handleRedo}
+                       onClick={() => { editModule.redo(); setIsEditMenuOpen(false); }}
                      >
                        <div className="flex items-center gap-2">
                          <Redo2 size={14} className="text-blue-400" />
@@ -710,7 +471,7 @@ export default function App() {
                     <div className="h-px bg-white/5 my-1" />
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                      onClick={handleCut}
+                      onClick={() => { editModule.cut(); setIsEditMenuOpen(false); }}
                     >
                       <div className="flex items-center gap-2">
                         <Scissors size={14} className="text-blue-400" />
@@ -720,7 +481,7 @@ export default function App() {
                     </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                      onClick={handleCopy}
+                      onClick={() => { editModule.copy(); setIsEditMenuOpen(false); }}
                     >
                       <div className="flex items-center gap-2 text-slate-200">
                         <Copy size={14} className="text-blue-400" />
@@ -730,7 +491,7 @@ export default function App() {
                     </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                      onClick={handlePaste}
+                      onClick={() => { editModule.paste(); setIsEditMenuOpen(false); }}
                     >
                       <div className="flex items-center gap-2 text-slate-200">
                         <Clipboard size={14} className="text-blue-400" />
@@ -741,12 +502,7 @@ export default function App() {
                     <div className="h-px bg-white/5 my-1" />
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                      onClick={() => {
-                         const bc = new BroadcastChannel("noka-ide-editor-actions");
-                         bc.postMessage("find");
-                         bc.close();
-                         setIsEditMenuOpen(false);
-                       }}
+                      onClick={() => { editModule.find(); setIsEditMenuOpen(false); }}
                      >
                        <div className="flex items-center gap-2">
                          <SearchCode size={14} className="text-blue-400" />
@@ -756,26 +512,17 @@ export default function App() {
                     </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                      onClick={() => {
-                        setActivePanel("search");
-                        setIsEditMenuOpen(false);
-                      }}
+                      onClick={() => { editModule.findInFiles(); setIsEditMenuOpen(false); }}
                     >
                       <div className="flex items-center gap-2">
-                         <Search size={14} className="text-blue-400" />
-                         <span>Find in Files</span>
-                       </div>
-                       <span className="text-[10px] text-slate-500">Ctrl+Shift+F</span>
-                     </button>
+                          <Search size={14} className="text-blue-400" />
+                          <span>Find in Files</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500">Ctrl+Shift+F</span>
+                      </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                      onClick={() => {
-                        const bc = new BroadcastChannel("noka-ide-editor-actions");
-                        bc.postMessage("replaceInFiles");
-                        bc.close();
-                        setActivePanel("search");
-                        setIsEditMenuOpen(false);
-                      }}
+                      onClick={() => { editModule.replaceInFiles(); setIsEditMenuOpen(false); }}
                     >
                       <div className="flex items-center gap-2">
                         <Replace size={14} className="text-blue-400" />
@@ -785,16 +532,11 @@ export default function App() {
                     </button>
                     <button
                       className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between transition-colors"
-                      onClick={() => {
-                         const bc = new BroadcastChannel("noka-ide-editor-actions");
-                         bc.postMessage("replace");
-                         bc.close();
-                         setIsEditMenuOpen(false);
-                       }}
+                      onClick={() => { editModule.replace(); setIsEditMenuOpen(false); }}
                      >
                        <div className="flex items-center gap-2">
-                         <Replace size={14} className="text-blue-400" />
-                         <span>Replace</span>
+                          <Replace size={14} className="text-blue-400" />
+                          <span>Replace</span>
                        </div>
                        <span className="text-[10px] text-slate-500">Ctrl+H</span>
                      </button>
